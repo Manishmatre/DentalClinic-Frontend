@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import api, { getToken, setToken, clearToken } from '../api/axios';
 import { toast } from 'react-toastify';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://dentalclinic-backend.onrender.com/api';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
