@@ -1,0 +1,73 @@
+/* Custom scrollbar styling */
+.scrollbar-styled::-webkit-scrollbar {
+  width: 5px;
+}
+
+.scrollbar-styled::-webkit-scrollbar-track {
+  background: rgba(247, 250, 252, 0.8);
+}
+
+.scrollbar-styled::-webkit-scrollbar-thumb {
+  background-color: rgba(99, 102, 241, 0.3);
+  border-radius: 20px;
+}
+
+.scrollbar-styled::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(99, 102, 241, 0.6);
+}
+
+/* Sidebar transition styles */
+.sidebar-transition {
+  transition: all 0.3s ease;
+}
+
+/* Gradient backgrounds */
+.header-gradient {
+  background: linear-gradient(to right, #4f46e5, #3b82f6);
+  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.15);
+}
+
+.sidebar-gradient {
+  background: linear-gradient(to bottom, #eef2ff, #ffffff);
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Main container styles */
+.main-container {
+  background-color: #f9fafb;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.8) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.8) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: center center;
+}
+
+/* Card styles */
+.card-hover {
+  transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+}
+
+/* Button gradients */
+.btn-primary-gradient {
+  background: linear-gradient(to right, #4f46e5, #3b82f6);
+  transition: all 0.3s ease;
+}
+
+.btn-primary-gradient:hover {
+  background: linear-gradient(to right, #4338ca, #2563eb);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+.btn-success-gradient {
+  background: linear-gradient(to right, #10b981, #059669);
+  transition: all 0.3s ease;
+}
+
+.btn-success-gradient:hover {
+  background: linear-gradient(to right, #059669, #047857);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}

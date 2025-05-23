@@ -1,0 +1,330 @@
+/* AppointmentCalendar.css */
+/* Enhanced styles for the appointment calendar */
+
+/* Calendar container */
+.rbc-calendar {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: #fff;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Calendar header */
+.rbc-toolbar {
+  padding: 0.75rem;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.rbc-toolbar button {
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-weight: 500;
+  background-color: #fff;
+  transition: all 0.2s;
+}
+
+.rbc-toolbar button:hover {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.rbc-toolbar button.rbc-active {
+  background-color: #4f46e5;
+  color: white;
+  border-color: #4338ca;
+}
+
+.rbc-toolbar button.rbc-active:hover {
+  background-color: #4338ca;
+}
+
+.rbc-toolbar-label {
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: #111827;
+}
+
+/* Calendar grid */
+.rbc-month-view {
+  border: 1px solid #e5e7eb;
+}
+
+.rbc-header {
+  padding: 0.5rem;
+  font-weight: 600;
+  color: #4b5563;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.rbc-date-cell {
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+  color: #6b7280;
+}
+
+.rbc-date-cell.rbc-now {
+  font-weight: bold;
+  color: #4f46e5;
+}
+
+.rbc-row-segment {
+  padding: 0.125rem 0.25rem;
+}
+
+/* Events */
+.rbc-event {
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border: none;
+  transition: all 0.2s;
+}
+
+.rbc-event:hover {
+  filter: brightness(0.9);
+}
+
+.rbc-event-label {
+  font-weight: 500;
+}
+
+.rbc-event-content {
+  font-weight: normal;
+}
+
+/* Status-based colors */
+.event-status-scheduled {
+  background-color: #93c5fd !important;
+  color: #1e40af !important;
+}
+
+.event-status-confirmed {
+  background-color: #86efac !important;
+  color: #166534 !important;
+}
+
+.event-status-cancelled {
+  background-color: #fca5a5 !important;
+  color: #991b1b !important;
+  text-decoration: line-through;
+}
+
+.event-status-completed {
+  background-color: #c4b5fd !important;
+  color: #5b21b6 !important;
+}
+
+.event-status-no-show {
+  background-color: #fdba74 !important;
+  color: #9a3412 !important;
+  font-style: italic;
+}
+
+/* Time grid */
+.rbc-time-view {
+  border: 1px solid #e5e7eb;
+}
+
+.rbc-time-header-content {
+  border-left: 1px solid #e5e7eb;
+}
+
+.rbc-time-content {
+  border-top: 1px solid #e5e7eb;
+}
+
+.rbc-time-slot {
+  color: #9ca3af;
+}
+
+.rbc-day-slot .rbc-time-slot {
+  border-top: 1px solid #f3f4f6;
+}
+
+.rbc-day-slot .rbc-event {
+  border-left: 4px solid rgba(0, 0, 0, 0.2);
+}
+
+/* Today highlight */
+.rbc-today {
+  background-color: #eff6ff;
+}
+
+/* Custom toolbar */
+.custom-calendar-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.custom-calendar-toolbar .toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.custom-calendar-toolbar .toolbar-title {
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: #111827;
+  margin: 0 1rem;
+}
+
+.custom-calendar-toolbar .toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Custom event component */
+.custom-event {
+  padding: 0.25rem;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.custom-event-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-event-time {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.custom-event-content {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .rbc-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .rbc-toolbar-label {
+    margin: 0.5rem 0;
+  }
+  
+  .custom-calendar-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .custom-calendar-toolbar .toolbar-section {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+.fc-event {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.85em;
+}
+
+.fc-day-today {
+  background-color: rgba(236, 242, 255, 0.5) !important;
+}
+
+.fc-timegrid-slot {
+  height: 40px !important;
+}
+
+.fc-header-toolbar {
+  margin-bottom: 1rem !important;
+}
+
+.fc-toolbar-title {
+  font-size: 1.25rem !important;
+}
+
+.fc-button {
+  background-color: #4f46e5 !important;
+  border-color: #4f46e5 !important;
+}
+
+.fc-button:hover {
+  background-color: #4338ca !important;
+  border-color: #4338ca !important;
+}
+
+.fc-button-active {
+  background-color: #3730a3 !important;
+  border-color: #3730a3 !important;
+}
+
+.fc-event-past {
+  opacity: 0.7;
+}
+
+.fc-event-time, .fc-event-title {
+  padding: 0 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status colors */
+.status-scheduled {
+  background-color: #4299e1 !important;
+  border-color: #4299e1 !important;
+}
+
+.status-confirmed {
+  background-color: #48bb78 !important;
+  border-color: #48bb78 !important;
+}
+
+.status-cancelled {
+  background-color: #f56565 !important;
+  border-color: #f56565 !important;
+}
+
+.status-completed {
+  background-color: #805ad5 !important;
+  border-color: #805ad5 !important;
+}
+
+.status-noshow {
+  background-color: #ed8936 !important;
+  border-color: #ed8936 !important;
+}
+
+/* Calendar container responsive styles */
+@media (max-width: 768px) {
+  .fc-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .fc-toolbar-title {
+    font-size: 1rem !important;
+  }
+}

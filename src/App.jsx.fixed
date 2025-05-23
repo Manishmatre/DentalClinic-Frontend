@@ -1,0 +1,173 @@
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
+import TenantLayout from './components/layout/TenantLayout';
+import { useTenant } from './contexts/TenantContext';
+
+// Auth Pages
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
+import Unauthorized from './pages/auth/Unauthorized';
+import VerifyEmail from './pages/auth/VerifyEmail';
+import ForgotPassword from './pages/auth/ForgotPassword';
+import ResetPassword from './pages/auth/ResetPassword';
+import NoClinic from './pages/auth/NoClinic';
+import ClinicInactive from './pages/auth/ClinicInactive';
+
+// Public Pages
+import HomePage from './pages/HomePage';
+import NotFoundPage from './pages/NotFoundPage';
+
+// Admin Pages
+import AdminDashboard from './pages/admin/Dashboard';
+import ManageStaff from './pages/admin/ManageStaff';
+import ClinicSettings from './pages/admin/ClinicSettings';
+import ClinicProfile from './pages/admin/ClinicProfile';
+import AppointmentManagement from './pages/admin/AppointmentManagement';
+import UserManagement from './pages/admin/UserManagement';
+import RoleManagement from './pages/admin/RoleManagement';
+import PatientsManagement from './pages/admin/PatientsManagement';
+import BillingManagement from './pages/admin/BillingManagement';
+import InventoryManagement from './pages/admin/InventoryManagement';
+import StaffManagement from './pages/admin/StaffManagement';
+import Reports from './pages/admin/Reports';
+import AdminProfile from './pages/admin/AdminProfileNew';
+import ClinicActivation from './pages/admin/ClinicActivation';
+
+// Doctor Pages
+import DoctorDashboard from './pages/doctor/Dashboard';
+import DoctorAppointmentManagement from './pages/doctor/AppointmentManagement';
+import PatientRecords from './pages/doctor/PatientRecords';
+import TreatmentPlans from './pages/doctor/TreatmentPlans';
+import DoctorPatientBilling from './pages/doctor/PatientBilling';
+import DoctorStaffDirectory from './pages/doctor/StaffDirectory';
+
+// Receptionist Pages
+import ReceptionistDashboard from './pages/receptionist/Dashboard';
+import AppointmentScheduling from './pages/receptionist/AppointmentScheduling';
+import PatientRegistration from './pages/receptionist/PatientRegistration';
+import ReceptionistStaffDirectory from './pages/receptionist/StaffDirectory';
+
+// Patient Pages
+import PatientDashboard from './pages/patient/Dashboard';
+import PatientAppointmentManagement from './pages/patient/AppointmentManagement';
+import MedicalHistory from './pages/patient/MedicalHistory';
+
+// Layouts
+import AdminLayout from './components/layout/AdminLayout';
+import DoctorLayout from './components/layout/DoctorLayout';
+import ReceptionistLayout from './components/layout/ReceptionistLayout';
+import PatientLayout from './components/layout/PatientLayout';
+
+import ProtectedRoute from './utils/ProtectedRoute';
+
+// Temporary placeholder for components not yet implemented
+const Placeholder = ({ title }) => (
+  <div className="p-4">
+    <h2 className="text-2xl font-bold mb-4">{title}</h2>
+    <p>Coming soon...</p>
+  </div>
+);
+
+function App() {
+  const { currentTenant, isLoading } = useTenant();
+  
+  return (
+    <Routes>
+      {/* Public Routes - No tenant context required */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/unauthorized" element={<Unauthorized />} />
+      <Route path="/no-clinic" element={<NoClinic />} />
+      <Route path="/clinic-inactive" element={<ClinicInactive />} />
+      
+      {/* Routes that require tenant context */}
+      <Route element={<TenantLayout />}>
+        {/* Public tenant-aware routes */}
+        <Route path="/" element={<HomePage />} />
+
+        {/* Protected Admin Routes */}
+        <Route element={
+          <ProtectedRoute 
+            requiredRoles={['Admin']} 
+            requireVerified={true}
+            requireClinic={true}
+          />
+        }>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/profile" element={<AdminProfile />} />
+            <Route path="/admin/clinic-profile" element={<ClinicProfile />} />
+            <Route path="/admin/staff" element={<ManageStaff />} />
+            <Route path="/admin/users" element={<UserManagement />} />
+            <Route path="/admin/roles" element={<RoleManagement />} />
+            <Route path="/admin/appointment-management" element={<AppointmentManagement />} />
+            <Route path="/admin/patients-management" element={<PatientsManagement />} />
+            <Route path="/admin/staff-management" element={<StaffManagement />} />
+            <Route path="/admin/billing-management" element={<BillingManagement />} />
+            <Route path="/admin/clinic-settings" element={<ClinicSettings />} />
+            <Route path="/admin/clinic-activation" element={<ClinicActivation />} />
+          </Route>
+        </Route>
+
+        {/* Protected Doctor Routes */}
+        <Route element={
+          <ProtectedRoute 
+            requiredRoles={['Doctor']} 
+            requireVerified={true}
+            requireClinic={true}
+          />
+        }>
+          <Route element={<DoctorLayout />}>
+            <Route path="/doctor/dashboard" element={<DoctorDashboard />} />
+            <Route path="/doctor/appointment-management" element={<DoctorAppointmentManagement />} />
+            <Route path="/doctor/patients" element={<PatientRecords />} />
+            <Route path="/doctor/treatments" element={<TreatmentPlans />} />
+            <Route path="/doctor/billing-management" element={<BillingManagement />} />
+            <Route path="/doctor/staff-directory" element={<DoctorStaffDirectory />} />
+          </Route>
+        </Route>
+
+        {/* Protected Receptionist Routes */}
+        <Route element={
+          <ProtectedRoute 
+            requiredRoles={['Receptionist']} 
+            requireVerified={true}
+            requireClinic={true}
+          />
+        }>
+          <Route element={<ReceptionistLayout />}>
+            <Route path="/receptionist/dashboard" element={<ReceptionistDashboard />} />
+            <Route path="/receptionist/appointments" element={<AppointmentScheduling />} />
+            <Route path="/receptionist/patients/register" element={<PatientRegistration />} />
+            <Route path="/receptionist/billing-management" element={<BillingManagement />} />
+            <Route path="/receptionist/staff-directory" element={<ReceptionistStaffDirectory />} />
+          </Route>
+        </Route>
+
+        {/* Protected Patient Routes */}
+        <Route element={
+          <ProtectedRoute 
+            requiredRoles={['Patient']} 
+            requireVerified={true}
+            requireClinic={true}
+          />
+        }>
+          <Route element={<PatientLayout />}>
+            <Route path="/patient/dashboard" element={<PatientDashboard />} />
+            <Route path="/patient/appointment-management" element={<PatientAppointmentManagement />} />
+            <Route path="/patient/medical-history" element={<MedicalHistory />} />
+            <Route path="/patient/billing-management" element={<BillingManagement />} />
+          </Route>
+        </Route>
+
+        {/* Catch All - Not Found */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export default App;
