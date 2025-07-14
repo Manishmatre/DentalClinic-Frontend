@@ -1,4 +1,6 @@
 import React from 'react';
+// Import TOOTH_CONDITIONS
+import { TOOTH_CONDITIONS } from '../../constants/dentalConstants';
 
 /**
  * ToothSvg component for rendering an anatomically accurate tooth SVG
@@ -10,23 +12,12 @@ import React from 'react';
  * @param {function} onClick Click handler
  */
 const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected = false, onClick }) => {
-  // Define colors for different conditions
-  const conditionColors = {
-    healthy: '#ffffff',
-    caries: '#ffcc00',
-    filled: '#a0a0a0',
-    missing: '#f0f0f0',
-    crown: '#c0c0ff',
-    bridge: '#c0e0ff',
-    implant: '#c0ffc0',
-    rootCanal: '#ffc0c0',
-    extraction: '#ff0000',
-    sealant: '#e0ffe0',
-    veneer: '#ffe0c0',
+  // Get color for the current condition from TOOTH_CONDITIONS
+  const getConditionColor = (condition) => {
+    const cond = TOOTH_CONDITIONS.find(c => c.value === condition);
+    return cond ? cond.color : '#ffffff';
   };
-
-  // Get base color from condition
-  const baseColor = conditionColors[condition] || conditionColors.healthy;
+  const baseColor = condition === 'healthy' ? `url(#toothGradient-${toothNumber})` : getConditionColor(condition);
   
   // Determine if a surface is affected
   const isSurfaceAffected = (surface) => surfaces.includes(surface);
@@ -34,24 +25,24 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
   // Check if the tooth number is a letter (primary tooth)
   const isPrimaryTooth = typeof toothNumber === 'string' && /^[A-T]$/.test(toothNumber);
 
-  // Get SVG path based on tooth type
+  // Update getToothPath to use more realistic SVG paths for each tooth type
   const getToothPath = () => {
-    // Adjust paths for primary teeth (make them slightly smaller)
     const scale = isPrimaryTooth ? 0.85 : 1;
-    
     switch(toothType) {
       case 'molar':
-        return `M${2*scale},${2*scale} L${18*scale},${2*scale} L${18*scale},${18*scale} L${2*scale},${18*scale} Z`;
+        // Rounded, multi-cusped molar shape
+        return `M${4*scale},${2*scale} Q${10*scale},${0*scale} ${16*scale},${2*scale} Q${19*scale},${7*scale} ${16*scale},${18*scale} Q${10*scale},${20*scale} ${4*scale},${18*scale} Q${1*scale},${7*scale} ${4*scale},${2*scale} Z`;
       case 'premolar':
-        return `M${4*scale},${2*scale} L${16*scale},${2*scale} L${16*scale},${18*scale} L${4*scale},${18*scale} Z`;
+        // Oval, two-cusped premolar shape
+        return `M${5*scale},${3*scale} Q${10*scale},${0*scale} ${15*scale},${3*scale} Q${18*scale},${10*scale} ${15*scale},${17*scale} Q${10*scale},${20*scale} ${5*scale},${17*scale} Q${2*scale},${10*scale} ${5*scale},${3*scale} Z`;
       case 'canine':
-        // More pointed for canines
-        return `M${5*scale},${2*scale} L${15*scale},${2*scale} L${15*scale},${18*scale} L${5*scale},${18*scale} Z`;
+        // Pointed canine shape
+        return `M${9*scale},${2*scale} Q${10*scale},${0*scale} ${11*scale},${2*scale} Q${18*scale},${10*scale} ${10*scale},${18*scale} Q${2*scale},${10*scale} ${9*scale},${2*scale} Z`;
       case 'incisor':
-        // Flatter for incisors
-        return `M${6*scale},${2*scale} L${14*scale},${2*scale} L${14*scale},${18*scale} L${6*scale},${18*scale} Z`;
+        // Flat, rectangular incisor shape
+        return `M${6*scale},${3*scale} Q${10*scale},${0*scale} ${14*scale},${3*scale} L${14*scale},${17*scale} Q${10*scale},${20*scale} ${6*scale},${17*scale} Z`;
       default:
-        return `M${2*scale},${2*scale} L${18*scale},${2*scale} L${18*scale},${18*scale} L${2*scale},${18*scale} Z`; // Default to molar
+        return `M${2*scale},${2*scale} L${18*scale},${2*scale} L${18*scale},${18*scale} L${2*scale},${18*scale} Z`;
     }
   };
 
@@ -87,6 +78,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: '2px',
+        margin: '2px', // add spacing between teeth
       }}
     >
       {/* Tooth Number */}
@@ -100,15 +92,25 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
       
       {/* SVG Tooth */}
       <svg width="40" height="40" viewBox="0 0 20 20">
-        {/* Base tooth shape */}
+        <defs>
+          <radialGradient id={`toothGradient-${toothNumber}`} cx="50%" cy="50%" r="70%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="1" />
+            <stop offset="100%" stopColor="#e5e7eb" stopOpacity="1" />
+          </radialGradient>
+          <filter id={`toothShadow-${toothNumber}`} x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="0.7" floodColor="#bbb" floodOpacity="0.5" />
+          </filter>
+        </defs>
+        {/* Base tooth shape with color from TOOTH_CONDITIONS */}
         <path 
           d={getToothPath()} 
-          fill={baseColor} 
+          fill={baseColor}
           stroke="#666" 
           strokeWidth="0.5"
+          filter={`url(#toothShadow-${toothNumber})`}
         />
         
-        {/* Surfaces */}
+        {/* Surfaces (with more distinct overlays) */}
         {/* Mesial (front) */}
         <rect 
           x={isPrimaryTooth ? 3 : 2} 
@@ -118,6 +120,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
           fill={isSurfaceAffected('mesial') ? '#ff6666' : 'transparent'} 
           stroke={isSurfaceAffected('mesial') ? '#ff0000' : 'transparent'} 
           strokeWidth="0.5"
+          opacity={isSurfaceAffected('mesial') ? 0.7 : 1}
         />
         
         {/* Distal (back) */}
@@ -129,6 +132,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
           fill={isSurfaceAffected('distal') ? '#ff6666' : 'transparent'} 
           stroke={isSurfaceAffected('distal') ? '#ff0000' : 'transparent'} 
           strokeWidth="0.5"
+          opacity={isSurfaceAffected('distal') ? 0.7 : 1}
         />
         
         {/* Buccal (outer) */}
@@ -140,6 +144,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
           fill={isSurfaceAffected('buccal') ? '#ff6666' : 'transparent'} 
           stroke={isSurfaceAffected('buccal') ? '#ff0000' : 'transparent'} 
           strokeWidth="0.5"
+          opacity={isSurfaceAffected('buccal') ? 0.7 : 1}
         />
         
         {/* Lingual (inner) */}
@@ -151,6 +156,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
           fill={isSurfaceAffected('lingual') ? '#ff6666' : 'transparent'} 
           stroke={isSurfaceAffected('lingual') ? '#ff0000' : 'transparent'} 
           strokeWidth="0.5"
+          opacity={isSurfaceAffected('lingual') ? 0.7 : 1}
         />
         
         {/* Occlusal (top) */}
@@ -162,6 +168,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
           fill={isSurfaceAffected('occlusal') ? '#ff6666' : 'transparent'} 
           stroke={isSurfaceAffected('occlusal') ? '#ff0000' : 'transparent'} 
           strokeWidth="0.5"
+          opacity={isSurfaceAffected('occlusal') ? 0.7 : 1}
         />
         
         {/* Special indicator for missing teeth */}

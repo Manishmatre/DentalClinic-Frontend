@@ -13,6 +13,8 @@ import {
   FaFileExport
 } from 'react-icons/fa';
 import dentalService from '../../api/dental/dentalService';
+import Card from '../ui/Card';
+import Button from '../ui/Button';
 
 // Demo sample data for when the backend is not available
 const SAMPLE_TREATMENTS = [
@@ -472,34 +474,25 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
 
   return (
     <div className="dental-reporting">
-      {/* Controls */}
-      <div className="mb-6 bg-white p-4 rounded-lg shadow">
-        <div className="flex flex-wrap justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Dental Reporting</h3>
-          
-          <div className="flex space-x-2">
-            <button
-              className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 flex items-center"
-              onClick={printReport}
-            >
+      <Card
+        title={<span className="flex items-center"><FaChartBar className="mr-2 text-blue-500" /> Dental Treatment Reports</span>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" onClick={printReport}>
               <FaPrint className="mr-1" /> Print
-            </button>
-            <button
-              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 flex items-center"
-              onClick={generatePDF}
-            >
+            </Button>
+            <Button variant="success" size="sm" onClick={generatePDF}>
               <FaFilePdf className="mr-1" /> Export PDF
-            </button>
-            <button
-              className="px-3 py-1.5 bg-purple-500 text-white rounded text-sm hover:bg-purple-600 flex items-center"
-              onClick={exportToCSV}
-            >
+            </Button>
+            <Button variant="primary" size="sm" onClick={exportToCSV}>
               <FaFileExport className="mr-1" /> Export CSV
-            </button>
+            </Button>
           </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        }
+        className="mb-6 overflow-hidden"
+        bodyClassName="space-y-6"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           {/* Date Range */}
           <div className="flex items-center space-x-2">
             <div className="flex-1">
@@ -522,7 +515,6 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
               />
             </div>
           </div>
-          
           {/* Report Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Report Type</label>
@@ -536,7 +528,6 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
               <option value="doctor-performance">Doctor Performance</option>
             </select>
           </div>
-          
           {/* Doctor Filter */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Doctor</label>
@@ -554,111 +545,106 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
             </select>
           </div>
         </div>
-      </div>
-      
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Summary Statistics */}
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Summary</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-600">Total Treatments</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.totalTreatments}</p>
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Summary Statistics */}
+            <Card
+              title="Summary"
+              className="bg-white p-0 shadow-none"
+              bodyClassName="p-0"
+            >
+              <div className="grid grid-cols-2 gap-4 p-4">
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">Total Treatments</p>
+                  <p className="text-2xl font-bold text-blue-600">{stats.totalTreatments}</p>
+                </div>
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">Total Cost</p>
+                  <p className="text-2xl font-bold text-green-600">${stats.totalCost.toFixed(2)}</p>
+                </div>
+                <div className="bg-purple-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">Procedures</p>
+                  <p className="text-2xl font-bold text-purple-600">{Object.keys(stats.treatmentsByType).length}</p>
+                </div>
+                <div className="bg-orange-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">Teeth Treated</p>
+                  <p className="text-2xl font-bold text-orange-600">{Object.keys(stats.treatmentsByTooth).length}</p>
+                </div>
               </div>
-              <div className="bg-green-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-600">Total Cost</p>
-                <p className="text-2xl font-bold text-green-600">${stats.totalCost.toFixed(2)}</p>
-              </div>
-              <div className="bg-purple-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-600">Procedures</p>
-                <p className="text-2xl font-bold text-purple-600">{Object.keys(stats.treatmentsByType).length}</p>
-              </div>
-              <div className="bg-orange-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-600">Teeth Treated</p>
-                <p className="text-2xl font-bold text-orange-600">{Object.keys(stats.treatmentsByTooth).length}</p>
-              </div>
-            </div>
-            
-            <div className="mt-4">
-              <h4 className="text-md font-medium mb-2">Patient Information</h4>
-              {patientInfo && (
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="font-medium">{patientInfo.name}</p>
-                  <div className="grid grid-cols-2 gap-y-1 mt-1 text-sm text-gray-600">
-                    <p>ID: {patientInfo._id}</p>
-                    <p>DOB: {new Date(patientInfo.dateOfBirth).toLocaleDateString()}</p>
-                    <p>Gender: {patientInfo.gender}</p>
-                    <p>Phone: {patientInfo.phone}</p>
+              <div className="mt-4 px-4">
+                <h4 className="text-md font-medium mb-2">Patient Information</h4>
+                {patientInfo && (
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="font-medium">{patientInfo.name}</p>
+                    <div className="grid grid-cols-2 gap-y-1 mt-1 text-sm text-gray-600">
+                      <p>ID: {patientInfo._id}</p>
+                      <p>DOB: {new Date(patientInfo.dateOfBirth).toLocaleDateString()}</p>
+                      <p>Gender: {patientInfo.gender}</p>
+                      <p>Phone: {patientInfo.phone}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-            
-            <div className="mt-4">
-              <h4 className="text-md font-medium mb-2">Top Procedures</h4>
-              <ul className="bg-gray-50 rounded-lg divide-y divide-gray-200">
-                {Object.entries(stats.treatmentsByType)
-                  .sort((a, b) => b[1].count - a[1].count)
-                  .slice(0, 4)
-                  .map(([procedure, data], index) => (
-                    <li key={index} className="p-2 flex justify-between items-center">
-                      <span>{procedure}</span>
-                      <span className="font-medium">{data.count}</span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          </div>
-          
-          {/* Main Chart Area */}
-          <div className="bg-white p-4 rounded-lg shadow lg:col-span-2">
-            <div ref={chartContainerRef} className="min-h-[300px]"></div>
-          </div>
-          
-          {/* Treatment List */}
-          <div className="bg-white p-4 rounded-lg shadow lg:col-span-3">
-            <h3 className="text-lg font-semibold mb-4">Treatment List</h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tooth</th>
-                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Procedure</th>
-                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
-                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-                    <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {getFilteredTreatments().map((treatment, index) => (
-                    <tr key={treatment._id || index} className="hover:bg-gray-50">
-                      <td className="py-2 px-3 text-sm">{new Date(treatment.date).toLocaleDateString()}</td>
-                      <td className="py-2 px-3 text-sm">{treatment.toothNumber}</td>
-                      <td className="py-2 px-3 text-sm">{treatment.procedure}</td>
-                      <td className="py-2 px-3 text-sm">{treatment.doctor}</td>
-                      <td className="py-2 px-3 text-sm">${treatment.cost?.toFixed(2) || '0.00'}</td>
-                      <td className="py-2 px-3 text-sm">{treatment.notes}</td>
+                )}
+              </div>
+              <div className="mt-4 px-4">
+                <h4 className="text-md font-medium mb-2">Top Procedures</h4>
+                <ul className="bg-gray-50 rounded-lg divide-y divide-gray-200">
+                  {Object.entries(stats.treatmentsByType)
+                    .sort((a, b) => b[1].count - a[1].count)
+                    .slice(0, 4)
+                    .map(([procedure, data], index) => (
+                      <li key={index} className="p-2 flex justify-between items-center">
+                        <span>{procedure}</span>
+                        <span className="font-medium">{data.count}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </Card>
+            {/* Main Chart Area */}
+            <Card className="bg-white p-0 shadow-none lg:col-span-2" bodyClassName="p-4">
+              <div ref={chartContainerRef} className="min-h-[300px]"></div>
+            </Card>
+            {/* Treatment List */}
+            <Card title="Treatment List" className="bg-white p-0 shadow-none lg:col-span-3" bodyClassName="p-4">
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tooth</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Procedure</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              
-              {getFilteredTreatments().length === 0 && (
-                <div className="text-center py-4 text-gray-500">
-                  No treatments found for the selected filters.
-                </div>
-              )}
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {getFilteredTreatments().map((treatment, index) => (
+                      <tr key={treatment._id || index} className="hover:bg-gray-50">
+                        <td className="py-2 px-3 text-sm">{new Date(treatment.date).toLocaleDateString()}</td>
+                        <td className="py-2 px-3 text-sm">{treatment.toothNumber}</td>
+                        <td className="py-2 px-3 text-sm">{treatment.procedure}</td>
+                        <td className="py-2 px-3 text-sm">{treatment.doctor}</td>
+                        <td className="py-2 px-3 text-sm">${treatment.cost?.toFixed(2) || '0.00'}</td>
+                        <td className="py-2 px-3 text-sm">{treatment.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {getFilteredTreatments().length === 0 && (
+                  <div className="text-center py-4 text-gray-500">
+                    No treatments found for the selected filters.
+                  </div>
+                )}
+              </div>
+            </Card>
           </div>
-        </div>
-      )}
-      
+        )}
+      </Card>
       {/* Print-specific styles */}
       <style>{`
         @media print {
@@ -669,8 +655,6 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
             display: none !important;
           }
         }
-        
-        /* Custom grid for teeth */
         .grid-cols-16 {
           grid-template-columns: repeat(8, minmax(0, 1fr));
         }

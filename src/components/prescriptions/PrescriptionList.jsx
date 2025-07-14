@@ -3,9 +3,12 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { 
   FaFileMedical, FaEye, FaPrint, FaEdit, 
-  FaTrash, FaSearch, FaFilter, FaSortAmountDown 
+  FaTrash, FaSearch, FaFilter, FaSortAmountDown, FaChevronDown 
 } from 'react-icons/fa';
 import prescriptionService from '../../api/prescriptions/prescriptionService';
+import Card from '../ui/Card';
+import Button from '../ui/Button';
+import { useRef } from 'react';
 
 const PrescriptionList = ({ patientId, readOnly = false }) => {
   const [prescriptions, setPrescriptions] = useState([]);
@@ -13,10 +16,22 @@ const PrescriptionList = ({ patientId, readOnly = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusDropdownRef = useRef(null);
 
   useEffect(() => {
     fetchPrescriptions();
   }, [patientId]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
+        setShowStatusDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchPrescriptions = async () => {
     try {
@@ -208,151 +223,126 @@ const PrescriptionList = ({ patientId, readOnly = false }) => {
   }
 
   return (
-    <div className="prescription-list">
-      {/* Controls */}
-      <div className="mb-4 flex flex-wrap justify-between items-center">
-        <div className="flex items-center space-x-2 mb-2 md:mb-0">
+    <Card className="mb-6 overflow-hidden">
+      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between">
+        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+          <FaFileMedical className="mr-2 text-blue-500" /> Prescriptions
+        </h3>
+        <div className="flex flex-col md:flex-row md:items-center gap-2 mt-2 md:mt-0">
+          {/* Search Input */}
           <div className="relative">
             <input
               type="text"
               placeholder="Search prescriptions..."
-              className="pl-8 pr-4 py-2 border rounded-md w-full md:w-64"
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full md:w-64 transition"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <FaSearch className="absolute left-3 top-3 text-gray-400" />
+            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            {searchTerm && (
+              <button
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setSearchTerm('')}
+                tabIndex={-1}
+              >
+                ×
+              </button>
+            )}
           </div>
-          
-          <select
-            className="border rounded-md px-3 py-2"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="completed">Completed</option>
-          </select>
-          
-          <button
-            className="flex items-center px-3 py-2 bg-gray-100 rounded-md hover:bg-gray-200"
+          {/* Status Dropdown */}
+          <div className="relative ml-2" ref={statusDropdownRef}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex items-center min-w-[120px] justify-between"
+              onClick={() => setShowStatusDropdown((v) => !v)}
+              type="button"
+            >
+              <FaFilter className="mr-2" />
+              {filterStatus === 'all' ? 'All Status' : filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)}
+              <FaChevronDown className="ml-2" />
+            </Button>
+            {showStatusDropdown && (
+              <div className="absolute z-10 mt-2 w-40 bg-white border border-gray-200 rounded shadow-lg">
+                <button
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filterStatus === 'all' ? 'text-indigo-600 font-semibold' : ''}`}
+                  onClick={() => { setFilterStatus('all'); setShowStatusDropdown(false); }}
+                >
+                  All Status
+                </button>
+                <button
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filterStatus === 'active' ? 'text-indigo-600 font-semibold' : ''}`}
+                  onClick={() => { setFilterStatus('active'); setShowStatusDropdown(false); }}
+                >
+                  Active
+                </button>
+                <button
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filterStatus === 'completed' ? 'text-indigo-600 font-semibold' : ''}`}
+                  onClick={() => { setFilterStatus('completed'); setShowStatusDropdown(false); }}
+                >
+                  Completed
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Sort Button */}
+          <Button
+            size="sm"
+            variant="secondary"
+            className="flex items-center ml-2"
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
           >
             <FaSortAmountDown className="mr-1" />
             {sortOrder === 'asc' ? 'Oldest First' : 'Newest First'}
-          </button>
-        </div>
-        
-        {!readOnly && (
-          <Link
-            to={`/prescriptions/new?patientId=${patientId}`}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center"
-          >
-            <FaFileMedical className="mr-2" /> New Prescription
-          </Link>
-        )}
-      </div>
-      
-      {filteredPrescriptions.length === 0 ? (
-        <div className="text-center py-8 bg-gray-50 rounded-lg">
-          <FaFileMedical className="mx-auto text-gray-300 text-5xl mb-3" />
-          <p className="text-gray-500">No prescriptions found</p>
+          </Button>
           {!readOnly && (
-            <Link
+            <Button
+              as={Link}
               to={`/prescriptions/new?patientId=${patientId}`}
-              className="mt-3 inline-block text-blue-500 hover:text-blue-700"
+              variant="primary"
+              size="sm"
+              className="flex items-center gap-2"
             >
-              Create a new prescription
-            </Link>
+              <FaFileMedical className="mr-1" /> New Prescription
+            </Button>
           )}
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-lg overflow-hidden">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Diagnosis</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Medications</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Doctor</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredPrescriptions.map((prescription) => (
-                <tr key={prescription.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900">
-                    {new Date(prescription.date).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">
-                    {prescription.diagnosis}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">
-                    <ul className="list-disc list-inside">
-                      {prescription.medications.map((med, index) => (
-                        <li key={med.id || index} className="truncate max-w-xs">
-                          {med.name} - {med.dosage}
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">
-                    {prescription.doctorName}
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        prescription.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {prescription.status === 'active' ? 'Active' : 'Completed'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right">
-                    <div className="flex justify-end space-x-2">
-                      <Link
-                        to={`/prescriptions/${prescription.id}`}
-                        className="text-blue-500 hover:text-blue-700"
-                        title="View"
-                      >
-                        <FaEye />
-                      </Link>
-                      <button
-                        onClick={() => handlePrintPrescription(prescription)}
-                        className="text-green-500 hover:text-green-700"
-                        title="Print"
-                      >
-                        <FaPrint />
-                      </button>
-                      {!readOnly && (
-                        <>
-                          <Link
-                            to={`/prescriptions/edit/${prescription.id}`}
-                            className="text-yellow-500 hover:text-yellow-700"
-                            title="Edit"
-                          >
-                            <FaEdit />
-                          </Link>
-                          <button
-                            onClick={() => handleDeletePrescription(prescription.id)}
-                            className="text-red-500 hover:text-red-700"
-                            title="Delete"
-                          >
-                            <FaTrash />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+      </div>
+      <div className="p-4">
+        {/* Prescription List Table or Cards */}
+        {filteredPrescriptions.length > 0 ? (
+          <div className="space-y-4">
+            {filteredPrescriptions.map((prescription) => (
+              <div key={prescription.id} className="bg-gray-50 p-4 rounded shadow-sm flex flex-col md:flex-row md:items-center md:justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center mb-2">
+                    <span className="font-semibold text-indigo-700">{prescription.diagnosis}</span>
+                    <span className="ml-4 text-xs text-gray-500">{new Date(prescription.date).toLocaleDateString()}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-1">Doctor: {prescription.doctorName}</div>
+                  <div className="text-xs text-gray-500 mb-1">Prescription #: {prescription.id}</div>
+                  <div className="text-xs text-gray-500 mb-1">Status: {prescription.status}</div>
+                  <div className="text-xs text-gray-500 mb-1">Medications: {prescription.medications.map(med => med.name).join(', ')}</div>
+                  {prescription.notes && <div className="text-xs text-gray-500">Notes: {prescription.notes}</div>}
+                </div>
+                <div className="flex space-x-2 mt-2 md:mt-0 md:ml-4">
+                  <Button size="sm" variant="secondary" onClick={() => handlePrintPrescription(prescription)}><FaPrint className="mr-1" /> Print</Button>
+                  {!readOnly && (
+                    <>
+                      <Link to={`/prescriptions/${prescription.id}/edit`} className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded flex items-center"><FaEdit className="mr-1" /> Edit</Link>
+                      <Button size="sm" variant="danger" onClick={() => handleDeletePrescription(prescription.id)}><FaTrash className="mr-1" /> Delete</Button>
+                    </>
+                  )}
+                  <Link to={`/prescriptions/${prescription.id}`} className="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded flex items-center"><FaEye className="mr-1" /> View</Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">No prescriptions found</div>
+        )}
+      </div>
+    </Card>
   );
 };
 

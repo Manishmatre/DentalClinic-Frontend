@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FaTooth, FaHistory, FaImage, FaChartBar, FaFileInvoiceDollar, FaPrint, FaFilePdf, FaArrowLeft, FaCalendarAlt, FaFileMedical } from 'react-icons/fa';
+import { FaTooth, FaHistory, FaImage, FaChartBar, FaFileInvoiceDollar, FaPrint, FaFilePdf, FaArrowLeft, FaCalendarAlt, FaFileMedical, FaIdCard, FaVenusMars, FaPhone } from 'react-icons/fa';
 // Import enhanced components
 import AdvancedToothChart from '../../components/dental/AdvancedToothChart';
 import EnhancedDentalImaging from '../../components/dental/EnhancedDentalImaging';
-import TreatmentHistory from '../../components/dental/TreatmentHistory';
-import DentalReporting from '../../components/dental/DentalReporting';
+import EnhancedDentalReporting from '../../components/dental/EnhancedDentalReporting';
 import DentalBilling from '../../components/dental/DentalBilling';
 import PrescriptionList from '../../components/prescriptions/PrescriptionList';
 import patientService from '../../api/patients/patientService';
+import dentalService from '../../api/dental/dentalService';
 import { useAuth } from '../../context/AuthContext';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Tabs from '../../components/ui/Tabs';
+import { FaPlus, FaEdit, FaTrash, FaCheck } from 'react-icons/fa';
 
 const FixedDentalEHR = () => {
   const { patientId } = useParams();
@@ -19,7 +23,104 @@ const FixedDentalEHR = () => {
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('chart');
+  const [treatmentTab, setTreatmentTab] = useState('plan'); // 'plan' or 'management'
+  const [treatments, setTreatments] = useState([]);
+  const [treatmentsLoading, setTreatmentsLoading] = useState(true);
+  const [treatmentsError, setTreatmentsError] = useState(null);
+  const [showTreatmentModal, setShowTreatmentModal] = useState(false);
+  const [editTreatment, setEditTreatment] = useState(null);
+  const [modalForm, setModalForm] = useState({
+    procedure: '',
+    toothNumber: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+    cost: '',
+    status: 'planned',
+  });
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleDateString());
+
+  // Fetch treatments on mount or patientId change
+  useEffect(() => {
+    const fetchTreatments = async () => {
+      setTreatmentsLoading(true);
+      setTreatmentsError(null);
+      try {
+        const data = await dentalService.getPatientTreatments(patientId);
+        setTreatments(data || []);
+      } catch (err) {
+        setTreatmentsError('Failed to load treatments');
+      } finally {
+        setTreatmentsLoading(false);
+      }
+    };
+    if (patientId) fetchTreatments();
+  }, [patientId]);
+
+  // Modal handlers
+  const openAddModal = () => {
+    setEditTreatment(null);
+    setModalForm({
+      procedure: '',
+      toothNumber: '',
+      date: new Date().toISOString().split('T')[0],
+      notes: '',
+      cost: '',
+      status: 'planned',
+    });
+    setShowTreatmentModal(true);
+  };
+  const openEditModal = (t) => {
+    setEditTreatment(t);
+    setModalForm({
+      procedure: t.procedure || '',
+      toothNumber: t.toothNumber || '',
+      date: t.date ? t.date.split('T')[0] : new Date().toISOString().split('T')[0],
+      notes: t.notes || '',
+      cost: t.cost || '',
+      status: t.status || 'planned',
+    });
+    setShowTreatmentModal(true);
+  };
+  const closeModal = () => {
+    setShowTreatmentModal(false);
+    setEditTreatment(null);
+  };
+
+  // Add or update treatment
+  const handleModalSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editTreatment) {
+        // Update logic (API endpoint needed)
+        // For now, update locally
+        setTreatments((prev) => prev.map((t) => t._id === editTreatment._id ? { ...editTreatment, ...modalForm } : t));
+        toast.success('Treatment updated');
+      } else {
+        // Add logic
+        const chartId = null; // You may need to fetch chartId if required
+        const toothNumber = modalForm.toothNumber;
+        const treatmentData = { ...modalForm };
+        // If API available, use: await dentalService.addTreatment(chartId, toothNumber, treatmentData);
+        setTreatments((prev) => [...prev, { ...treatmentData, _id: `local-${Date.now()}` }]);
+        toast.success('Treatment added');
+      }
+      closeModal();
+    } catch (err) {
+      toast.error('Failed to save treatment');
+    }
+  };
+
+  // Delete treatment
+  const handleDelete = (id) => {
+    setTreatments((prev) => prev.filter((t) => t._id !== id));
+    toast.success('Treatment deleted');
+  };
+
+  // Mark as completed
+  const handleMarkCompleted = (id) => {
+    setTreatments((prev) => prev.map((t) => t._id === id ? { ...t, status: 'completed' } : t));
+    toast.success('Marked as completed');
+  };
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -76,130 +177,204 @@ const FixedDentalEHR = () => {
     );
   }
 
+  const dentalTabs = [
+    { id: 'chart', label: 'Tooth Chart', icon: <FaTooth /> },
+    { id: 'treatment-management', label: 'Treatment Management', icon: <FaHistory /> },
+    { id: 'images', label: 'Dental Images', icon: <FaImage /> },
+    { id: 'reports', label: 'Reports', icon: <FaChartBar /> },
+    { id: 'prescriptions', label: 'Prescriptions', icon: <FaFileMedical /> },
+    { id: 'billing', label: 'Billing', icon: <FaFileInvoiceDollar /> },
+  ];
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Breadcrumb Navigation */}
-      <div className="flex items-center mb-6 text-sm">
-        <Link
-          to={`/${user.role.toLowerCase()}/dental-management`}
-          className="text-blue-500 hover:text-blue-700 cursor-pointer flex items-center"
-        >
-          <FaArrowLeft className="mr-1" /> Dental Management
-        </Link>
-        <span className="mx-2">/</span>
-        <span className="text-gray-500">Patient Dental EHR</span>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center">
+          <Button
+            variant="outline"
+            onClick={() => navigate(-1)}
+            className="mr-4"
+          >
+            <FaArrowLeft className="mr-2" /> Back
+          </Button>
+          <h1 className="text-2xl font-bold text-gray-800">Dental EHR</h1>
+        </div>
+        <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => window.print()}
+            className="flex items-center"
+          >
+            <FaPrint className="mr-2" /> Print
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => toast.success('PDF Export feature will be implemented soon')}
+            className="flex items-center"
+          >
+            <FaFilePdf className="mr-2" /> Export PDF
+          </Button>
+        </div>
       </div>
-      
-      {/* Patient Info Header */}
-      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-          <div>
-            <h1 className="text-2xl font-bold">{patient.name}</h1>
-            <div className="flex flex-col md:flex-row md:space-x-4 text-gray-600 mt-1">
-              <p>ID: {patient._id}</p>
-              <p>DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}</p>
-              <p>Gender: {patient.gender}</p>
-              <p>Phone: {patient.phone}</p>
+      <Card className="mb-6">
+        <div className="flex flex-col md:flex-row items-center md:items-start p-6">
+          <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-indigo-100 bg-gray-100 flex items-center justify-center mb-4 md:mb-0 md:mr-6">
+            <FaTooth className="text-indigo-400 text-5xl" />
+          </div>
+          <div className="flex-1 text-center md:text-left">
+            <div className="flex flex-col md:flex-row md:items-center mb-2">
+              <h2 className="text-2xl font-bold text-gray-800 mr-2">{patient.name}</h2>
+            </div>
+            <div className="flex flex-col md:flex-row md:items-center text-gray-600 mb-4">
+              <div className="flex items-center justify-center md:justify-start mb-2 md:mb-0 md:mr-4">
+                <FaIdCard className="text-indigo-600 mr-1" />
+                <span>ID: {patient._id}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="flex items-center justify-center md:justify-start">
+                <FaCalendarAlt className="text-orange-500 mr-2" />
+                <span>DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}</span>
+              </div>
+              <div className="flex items-center justify-center md:justify-start">
+                <FaVenusMars className="text-pink-500 mr-2" />
+                <span>{patient.gender}</span>
+              </div>
+              <div className="flex items-center justify-center md:justify-start">
+                <FaPhone className="text-green-500 mr-2" />
+                <span>{patient.phone}</span>
+              </div>
             </div>
           </div>
-          <div className="mt-4 md:mt-0 flex space-x-2">
-            <button
-              className="bg-blue-500 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-600 flex items-center"
-              onClick={() => window.print()}
-            >
-              <FaPrint className="mr-1" /> Print Record
-            </button>
-            <button
-              className="bg-green-500 text-white px-3 py-1.5 rounded text-sm hover:bg-green-600 flex items-center"
-              onClick={() => {
-                // Generate PDF logic would go here
-                toast.success('PDF Export feature will be implemented soon');
-              }}
-            >
-              <FaFilePdf className="mr-1" /> Export PDF
-            </button>
-          </div>
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="bg-white rounded-lg shadow-md mb-6">
-        <div className="flex border-b overflow-x-auto">
-          <button
-            className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'chart'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('chart')}
-          >
-            <FaTooth className="mr-1" /> Tooth Chart
-          </button>
-          <button
-            className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'treatments'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('treatments')}
-          >
-            <FaHistory className="mr-1" /> Treatment History
-          </button>
-          <button
-            className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'images'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('images')}
-          >
-            <FaImage className="mr-1" /> Dental Images
-          </button>
-          <button
-            className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'reports'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('reports')}
-          >
-            <FaChartBar className="mr-1" /> Reports
-          </button>
-          <button
-            className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'prescriptions'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('prescriptions')}
-          >
-            <FaFileMedical className="mr-1" /> Prescriptions
-          </button>
-          <button
-            className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'billing'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('billing')}
-          >
-            <FaFileInvoiceDollar className="mr-1" /> Billing
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        <div className="p-4">
+      </Card>
+      <Card className="mb-6 overflow-hidden">
+        <Tabs tabs={dentalTabs} activeTab={activeTab} onChange={setActiveTab} className="border-b border-gray-200" />
+        <div className="p-6">
           {activeTab === 'chart' && (
             <AdvancedToothChart patientId={patientId} readOnly={!canEditDental} />
           )}
-          {activeTab === 'treatments' && (
-            <TreatmentHistory patientId={patientId} readOnly={!canEditDental} />
+          {activeTab === 'treatment-management' && (
+            <div>
+              <div className="flex justify-between items-center border-b border-gray-200 mb-4">
+                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                  <button
+                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                    onClick={() => setTreatmentTab('plan')}
+                  >
+                    Treatment Plan
+                  </button>
+                  <button
+                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'management' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                    onClick={() => setTreatmentTab('management')}
+                  >
+                    Treatment Management
+                  </button>
+                </nav>
+                {treatmentTab === 'plan' && (
+                  <Button variant="primary" size="sm" className="ml-4" onClick={openAddModal}>
+                    <FaPlus className="mr-1" /> Add Treatment
+                  </Button>
+                )}
+              </div>
+              {/* Tab Content */}
+              {treatmentsLoading ? (
+                <div className="text-center py-8 text-gray-400">Loading...</div>
+              ) : treatmentsError ? (
+                <div className="text-center py-8 text-red-400">{treatmentsError}</div>
+              ) : treatmentTab === 'plan' ? (
+                treatments.filter(t => t.status === 'planned').length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">No planned treatments</div>
+                ) : (
+                  <div className="space-y-2">
+                    {treatments.filter(t => t.status === 'planned').map((t) => (
+                      <Card key={t._id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4">
+                        <div>
+                          <div className="font-medium text-gray-700">{t.procedure}</div>
+                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
+                          {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
+                        </div>
+                        <div className="flex gap-2 mt-2 md:mt-0">
+                          <Button size="sm" variant="primary" onClick={() => openEditModal(t)}><FaEdit /></Button>
+                          <Button size="sm" variant="danger" onClick={() => handleDelete(t._id)}><FaTrash /></Button>
+                          <Button size="sm" variant="success" onClick={() => handleMarkCompleted(t._id)}><FaCheck /> Complete</Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )
+              ) : (
+                treatments.filter(t => t.status === 'completed').length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">No completed treatments</div>
+                ) : (
+                  <div className="space-y-2">
+                    {treatments.filter(t => t.status === 'completed').map((t) => (
+                      <Card key={t._id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4">
+                        <div>
+                          <div className="font-medium text-gray-700">{t.procedure}</div>
+                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
+                          {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
+                        </div>
+                        <div className="flex gap-2 mt-2 md:mt-0">
+                          <Button size="sm" variant="primary" onClick={() => openEditModal(t)}><FaEdit /></Button>
+                          <Button size="sm" variant="danger" onClick={() => handleDelete(t._id)}><FaTrash /></Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )
+              )}
+              {/* Modal for add/edit */}
+              {showTreatmentModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">{editTreatment ? 'Edit Treatment' : 'Add Treatment'}</h3>
+                      <button className="text-gray-500 hover:text-gray-700" onClick={closeModal}>×</button>
+                    </div>
+                    <form onSubmit={handleModalSubmit} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Procedure *</label>
+                        <input type="text" className="w-full border rounded px-2 py-1" required value={modalForm.procedure} onChange={e => setModalForm(f => ({ ...f, procedure: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tooth Number *</label>
+                        <input type="number" className="w-full border rounded px-2 py-1" required value={modalForm.toothNumber} onChange={e => setModalForm(f => ({ ...f, toothNumber: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Date *</label>
+                        <input type="date" className="w-full border rounded px-2 py-1" required value={modalForm.date} onChange={e => setModalForm(f => ({ ...f, date: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Notes</label>
+                        <textarea className="w-full border rounded px-2 py-1" rows={2} value={modalForm.notes} onChange={e => setModalForm(f => ({ ...f, notes: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Cost ($)</label>
+                        <input type="number" className="w-full border rounded px-2 py-1" value={modalForm.cost} onChange={e => setModalForm(f => ({ ...f, cost: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Status</label>
+                        <select className="w-full border rounded px-2 py-1" value={modalForm.status} onChange={e => setModalForm(f => ({ ...f, status: e.target.value }))}>
+                          <option value="planned">Planned</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
+                        <Button type="submit" variant="primary">{editTreatment ? 'Update' : 'Add'}</Button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {activeTab === 'images' && (
             <EnhancedDentalImaging patientId={patientId} readOnly={!canEditDental} />
           )}
           {activeTab === 'reports' && (
-            <DentalReporting patientId={patientId} readOnly={!canEditDental} />
+            <EnhancedDentalReporting patientId={patientId} readOnly={!canEditDental} />
           )}
           {activeTab === 'prescriptions' && (
             <PrescriptionList patientId={patientId} readOnly={!canEditDental} />
@@ -208,9 +383,7 @@ const FixedDentalEHR = () => {
             <DentalBilling patientId={patientId} readOnly={!canEditDental} />
           )}
         </div>
-      </div>
-
-      {/* Last Updated */}
+      </Card>
       <div className="text-right text-sm text-gray-500 mt-4">
         Last updated: {lastUpdated}
       </div>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
-import { FaUpload, FaDownload, FaTrash, FaSearch, FaPlus, FaCalendarAlt, FaImage, FaEye, FaEdit, FaTimes } from 'react-icons/fa';
+import Card from '../ui/Card';
+import Button from '../ui/Button';
+import { FaUpload, FaDownload, FaTrash, FaSearch, FaPlus, FaCalendarAlt, FaImage, FaEye, FaEdit, FaTimes, FaChevronDown, FaFilter, FaSortAmountDown } from 'react-icons/fa';
 import dentalService from '../../api/dental/dentalService';
 
 const IMAGE_TYPES = [
@@ -53,6 +55,10 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
   const fileInputRef = useRef(null);
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const typeDropdownRef = useRef(null);
+  const sortDropdownRef = useRef(null);
   
   // Fetch dental images
   useEffect(() => {
@@ -75,6 +81,19 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
       fetchImages();
     }
   }, [patientId]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
+        setShowTypeDropdown(false);
+      }
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setShowSortDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleImageUpload = async (imageData) => {
     try {
@@ -221,143 +240,141 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md">
-      <div className="p-4 border-b">
-        <h2 className="text-lg font-semibold flex items-center">
+    <Card className="mb-6 overflow-hidden">
+      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between">
+        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
           <FaImage className="mr-2 text-blue-500" /> Dental Imaging
-        </h2>
-      </div>
-      
-      <div className="p-4">
-        {/* Controls */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <input
-                type="text"
-                className="w-full pl-10 pr-4 py-2 border rounded"
-                placeholder="Search images..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <FaSearch className="absolute left-3 top-3 text-gray-400" />
-            </div>
+        </h3>
+        <div className="flex flex-col md:flex-row md:items-center gap-2 mt-2 md:mt-0">
+          {/* Search Input */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search images..."
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full md:w-64 transition"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            {searchTerm && (
+              <button
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setSearchTerm('')}
+                tabIndex={-1}
+              >
+                ×
+              </button>
+            )}
           </div>
-          
-          <select
-            className="border rounded px-3 py-2"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-          >
-            <option value="all">All Types</option>
-            {IMAGE_TYPES.map(type => (
-              <option key={type.value} value={type.value}>{type.label}</option>
-            ))}
-          </select>
-          
-          <select
-            className="border rounded px-3 py-2"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-          </select>
-          
+          {/* Type Dropdown */}
+          <div className="relative ml-2" ref={typeDropdownRef}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex items-center min-w-[140px] justify-between"
+              onClick={() => setShowTypeDropdown((v) => !v)}
+              type="button"
+            >
+              <FaFilter className="mr-2" />
+              {filterType === 'all' ? 'All Types' : (IMAGE_TYPES.find(t => t.value === filterType)?.label || filterType)}
+              <FaChevronDown className="ml-2" />
+            </Button>
+            {showTypeDropdown && (
+              <div className="absolute z-10 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg">
+                <button
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filterType === 'all' ? 'text-indigo-600 font-semibold' : ''}`}
+                  onClick={() => { setFilterType('all'); setShowTypeDropdown(false); }}
+                >
+                  All Types
+                </button>
+                {IMAGE_TYPES.map(type => (
+                  <button
+                    key={type.value}
+                    className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filterType === type.value ? 'text-indigo-600 font-semibold' : ''}`}
+                    onClick={() => { setFilterType(type.value); setShowTypeDropdown(false); }}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Sort Dropdown */}
+          <div className="relative ml-2" ref={sortDropdownRef}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex items-center min-w-[120px] justify-between"
+              onClick={() => setShowSortDropdown((v) => !v)}
+              type="button"
+            >
+              <FaSortAmountDown className="mr-2" />
+              {sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}
+              <FaChevronDown className="ml-2" />
+            </Button>
+            {showSortDropdown && (
+              <div className="absolute z-10 mt-2 w-40 bg-white border border-gray-200 rounded shadow-lg">
+                <button
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${sortOrder === 'newest' ? 'text-indigo-600 font-semibold' : ''}`}
+                  onClick={() => { setSortOrder('newest'); setShowSortDropdown(false); }}
+                >
+                  Newest First
+                </button>
+                <button
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${sortOrder === 'oldest' ? 'text-indigo-600 font-semibold' : ''}`}
+                  onClick={() => { setSortOrder('oldest'); setShowSortDropdown(false); }}
+                >
+                  Oldest First
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Upload Button */}
           {!readOnly && (
-            <button
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center"
+            <Button
+              size="sm"
+              variant="primary"
+              className="flex items-center ml-2"
               onClick={() => setShowUploadForm(true)}
             >
-              <FaUpload className="mr-2" /> Upload
-            </button>
+              <FaUpload className="mr-2" /> Upload Image
+            </Button>
           )}
         </div>
-        
-        {/* Image Gallery */}
+      </div>
+      <div className="p-4">
+        {/* Image List */}
         {sortedImages.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {sortedImages.map(image => (
-              <div key={image._id} className="border rounded-lg overflow-hidden">
-                <div 
-                  className="h-40 bg-gray-100 cursor-pointer relative"
-                  onClick={() => handleViewImage(image)}
-                >
-                  <img 
-                    src={image.thumbnailUrl || image.url} 
-                    alt={image.description}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = 'https://via.placeholder.com/300x200?text=Image+Not+Available';
-                    }}
-                  />
-                  <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                    {getImageTypeLabel(image.type)}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sortedImages.map((img) => (
+              <div key={img._id} className="bg-gray-50 p-4 rounded shadow-sm flex flex-col">
+                <div className="flex items-center mb-2">
+                  <img src={img.thumbnailUrl || img.url} alt={img.description} className="w-20 h-20 object-cover rounded mr-4 border" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-indigo-700">{getImageTypeLabel(img.type)}</div>
+                    <div className="text-xs text-gray-500">{new Date(img.date).toLocaleDateString()}</div>
+                    <div className="text-xs text-gray-500">{img.description}</div>
                   </div>
                 </div>
-                
-                <div className="p-3">
-                  <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-medium text-sm line-clamp-1" title={image.description}>
-                      {image.description}
-                    </h3>
-                  </div>
-                  
-                  <div className="flex items-center text-xs text-gray-500 mb-2">
-                    <FaCalendarAlt className="mr-1" />
-                    {new Date(image.date).toLocaleDateString()}
-                  </div>
-                  
-                  <div className="flex justify-between mt-2">
-                    <button
-                      className="text-blue-500 hover:text-blue-700"
-                      onClick={() => handleViewImage(image)}
-                    >
-                      <FaEye />
-                    </button>
-                    
-                    {!readOnly && (
-                      <div className="flex space-x-2">
-                        <button
-                          className="text-gray-500 hover:text-gray-700"
-                          onClick={() => {
-                            setSelectedImage(image);
-                            setShowUploadForm(true);
-                          }}
-                        >
-                          <FaEdit />
-                        </button>
-                        <button
-                          className="text-red-500 hover:text-red-700"
-                          onClick={() => handleDeleteImage(image._id)}
-                        >
-                          <FaTrash />
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                <div className="flex-1 text-xs text-gray-500 mb-2">{img.notes}</div>
+                <div className="flex space-x-2 mt-2">
+                  <Button size="sm" variant="secondary" onClick={() => handleViewImage(img)}><FaEye className="mr-1" /> View</Button>
+                  {!readOnly && (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => setSelectedImage(img) || setShowUploadForm(true)}><FaEdit className="mr-1" /> Edit</Button>
+                      <Button size="sm" variant="danger" onClick={() => handleDeleteImage(img._id)}><FaTrash className="mr-1" /> Delete</Button>
+                    </>
+                  )}
+                  <a href={img.url} target="_blank" rel="noopener noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded flex items-center"><FaDownload className="mr-1" /> Download</a>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-8">
-            <FaImage className="text-4xl text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-500">No dental images found</p>
-            {!readOnly && (
-              <button
-                className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded inline-flex items-center"
-                onClick={() => setShowUploadForm(true)}
-              >
-                <FaUpload className="mr-2" /> Upload First Image
-              </button>
-            )}
-          </div>
+          <div className="text-center py-8 text-gray-500">No dental images found</div>
         )}
       </div>
-      
-      {/* Image Upload Form */}
+      {/* Upload Form and Image Viewer logic remains unchanged */}
       {showUploadForm && (
         <UploadForm 
           onUpload={handleImageUpload}
@@ -427,7 +444,7 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 };
 

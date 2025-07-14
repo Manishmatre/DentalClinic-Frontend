@@ -81,25 +81,25 @@ const ClinicProfile = () => {
       const clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
       const clinicData = clinicDataResponse.data || clinicDataResponse;
       console.log('Fetched clinic data from API:', clinicData);
-      if (!clinicData) {
-        throw new Error('No clinic data received from server');
-      }
-      setClinicData(clinicData);
-      setFormData({
-        name: clinicData?.name || '',
-        email: clinicData?.email || '',
-        contact: clinicData?.contact || '',
-        clinicContact: clinicData?.clinicContact || '',
-        doctorName: clinicData?.doctorName || '',
-        address1: clinicData?.address1 || '',
-        address2: clinicData?.address2 || '',
-        city: clinicData?.city || '',
-        state: clinicData?.state || '',
-        country: clinicData?.country || '',
-        zipcode: clinicData?.zipcode || '',
-        about: clinicData?.about || '',
-        logo: clinicData?.logo || ''
-      });
+        if (!clinicData) {
+          throw new Error('No clinic data received from server');
+        }
+        setClinicData(clinicData);
+        setFormData({
+          name: clinicData?.name || '',
+          email: clinicData?.email || '',
+          contact: clinicData?.contact || '',
+          clinicContact: clinicData?.clinicContact || '',
+          doctorName: clinicData?.doctorName || '',
+          address1: clinicData?.address1 || '',
+          address2: clinicData?.address2 || '',
+          city: clinicData?.city || '',
+          state: clinicData?.state || '',
+          country: clinicData?.country || '',
+          zipcode: clinicData?.zipcode || '',
+          about: clinicData?.about || '',
+          logo: clinicData?.logo || ''
+        });
     } catch (err) {
       console.error('Error in fetchClinicData:', err);
       setError('Failed to load clinic data. Please try refreshing the page.');
@@ -107,7 +107,7 @@ const ClinicProfile = () => {
       setIsLoading(false);
     }
   };
-
+  
   // Load fresh clinic data when component mounts or user changes
   useEffect(() => {
     fetchClinicData();
@@ -145,16 +145,16 @@ const ClinicProfile = () => {
 
       // Clear cached clinic data to force refetch
       localStorage.removeItem('clinicData');
-
+      
       // Refresh auth context to get updated clinic data
       await refreshAuth();
-
+      
       // Show success message
       setSuccess('Clinic profile updated successfully');
-
+      
       // Exit edit mode
       setIsEditing(false);
-
+      
       // Refresh clinic data to show the latest information from the database
       await fetchClinicData();
     } catch (err) {

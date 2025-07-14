@@ -3,11 +3,12 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'react-toastify';
-import { FaFileInvoiceDollar, FaSearch, FaSave, FaTrash, FaTooth, FaMoneyBillWave } from 'react-icons/fa';
+import { FaFileInvoiceDollar, FaSearch, FaSave, FaTrash } from 'react-icons/fa';
 import dentalService from '../../api/dental/dentalService';
 import billingService from '../../api/billing/billingService';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import Card from '../ui/Card';
 
 // CDT Code categories with common dental procedures
 const CDT_CATEGORIES = [
@@ -297,241 +298,217 @@ const DentalBilling = ({ patientId, treatmentId, onComplete }) => {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-lg shadow-md p-4 space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <h2 className="text-xl font-semibold">Dental Billing</h2>
-        <div className="mt-2 md:mt-0">
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <Card
+        title={<span className="flex items-center"><FaFileInvoiceDollar className="mr-2 text-green-500" /> Dental Billing</span>}
+        actions={
           <Button type="submit" variant="primary" loading={loading} icon={<FaSave />}>
             Save & Create Invoice
           </Button>
-        </div>
-      </div>
-
-      {/* Patient Information */}
-      <div className="bg-blue-50 p-4 rounded-lg mb-6">
-        <h3 className="text-lg font-medium mb-2">Patient Information</h3>
-        <p className="font-medium">{patient?.name || 'Unknown'}</p>
-        <p className="text-sm text-gray-600">ID: {patient?._id || patientId}</p>
-      </div>
-
-      {/* Treatment Information */}
-      {treatment && (
-        <div className="bg-gray-50 p-4 rounded-lg mb-6">
-          <h3 className="text-lg font-medium mb-2">Treatment Information</h3>
-          <p className="font-medium">{treatment.procedure || 'N/A'}</p>
-          <p className="text-sm text-gray-600">Tooth Number: {treatment.toothNumber || 'N/A'}</p>
-          <p className="text-sm text-gray-600">Date: {treatment.date ? new Date(treatment.date).toLocaleDateString() : 'N/A'}</p>
-          {treatment.notes && <p className="text-sm mt-2">{treatment.notes}</p>}
-        </div>
-      )}
-
-      {/* Procedure Code Selection */}
-      <div>
-        <h3 className="text-lg font-medium mb-4">Select Procedure Code</h3>
-        <div className="mb-4 flex">
-          <input
-            type="text"
-            className="w-full pl-10 pr-4 py-2 border rounded"
-            placeholder="Search for procedure code or description..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <select
-            className="ml-2 p-2 border rounded"
-            value={selectedCategory}
-            onChange={(e) => {
-              setSelectedCategory(e.target.value);
-              setSearchTerm('');
-            }}
-            disabled={searchTerm !== ''}
-          >
-            {CDT_CATEGORIES.map(category => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="bg-gray-50 p-4 rounded-lg max-h-60 overflow-y-auto mb-4">
-          <table className="min-w-full">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="py-2 px-4 text-left">Code</th>
-                <th className="py-2 px-4 text-left">Description</th>
-                <th className="py-2 px-4 text-right">Fee</th>
-                <th className="py-2 px-4 text-center">Select</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCodes.length > 0 ? (
-                filteredCodes.map((code) => (
-                  <tr
-                    key={code.code}
-                    className={selectedCode?.code === code.code ? 'bg-blue-50' : ''}
-                  >
-                    <td className="py-2 px-4">{code.code}</td>
-                    <td className="py-2 px-4">{code.description}</td>
-                    <td className="py-2 px-4 text-right">${code.fee.toFixed(2)}</td>
-                    <td className="py-2 px-4 text-center">
-                      <button
-                        type="button"
-                        className={`p-1 rounded ${
-                          selectedCode?.code === code.code
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-200 hover:bg-gray-300'
-                        }`}
-                        onClick={() => setSelectedCode(code)}
-                      >
-                        {selectedCode?.code === code.code ? 'Selected' : 'Select'}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="4" className="py-4 text-center text-gray-500">
-                    No procedures found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {selectedCode && (
-          <div className="bg-blue-50 p-4 rounded-lg mb-4 flex flex-col md:flex-row justify-between items-center">
-            <div>
-              <p className="font-bold">{selectedCode.code}</p>
-              <p>{selectedCode.description}</p>
-              <p className="text-blue-700">${selectedCode.fee.toFixed(2)}</p>
-            </div>
-            <div className="flex items-center mt-2 md:mt-0">
-              <label className="mr-2">Quantity:</label>
-              <input
-                type="number"
-                min="1"
-                className="w-16 p-1 border rounded text-center"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-              />
-              <Button className="ml-4" onClick={handleAddItem} variant="success" size="sm">
-                Add
-              </Button>
-            </div>
-          </div>
+        }
+        className="mb-6 overflow-hidden"
+      >
+        {/* Patient Information */}
+        <Card title="Patient Information" className="mb-4" bodyClassName="bg-blue-50">
+          <p className="font-medium">{patient?.name || 'Unknown'}</p>
+          <p className="text-sm text-gray-600">ID: {patient?._id || patientId}</p>
+        </Card>
+        {/* Treatment Information */}
+        {treatment && (
+          <Card title="Treatment Information" className="mb-4" bodyClassName="bg-gray-50">
+            <p className="font-medium">{treatment.procedure || 'N/A'}</p>
+            <p className="text-sm text-gray-600">Tooth Number: {treatment.toothNumber || 'N/A'}</p>
+            <p className="text-sm text-gray-600">Date: {treatment.date ? new Date(treatment.date).toLocaleDateString() : 'N/A'}</p>
+            {treatment.notes && <p className="text-sm mt-2">{treatment.notes}</p>}
+          </Card>
         )}
-      </div>
-
-      {/* Billing Items */}
-      <div>
-        <h3 className="text-lg font-medium mb-4">Billing Items</h3>
-        {fields.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border">
-              <thead className="bg-gray-50">
+        {/* Procedure Code Selection */}
+        <Card title="Select Procedure Code" className="mb-4">
+          <div className="mb-4 flex">
+            <Input
+              type="text"
+              className="w-full"
+              placeholder="Search for procedure code or description..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              prefix={<FaSearch className="text-gray-400" />}
+            />
+            <select
+              className="ml-2 p-2 border rounded"
+              value={selectedCategory}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value);
+                setSearchTerm('');
+              }}
+              disabled={searchTerm !== ''}
+            >
+              {CDT_CATEGORIES.map(category => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg max-h-60 overflow-y-auto mb-4">
+            <table className="min-w-full">
+              <thead className="bg-gray-100">
                 <tr>
-                  <th className="py-2 px-4 border-b text-left">Code</th>
-                  <th className="py-2 px-4 border-b text-left">Description</th>
-                  <th className="py-2 px-4 border-b text-center">Tooth #</th>
-                  <th className="py-2 px-4 border-b text-right">Fee</th>
-                  <th className="py-2 px-4 border-b text-center">Qty</th>
-                  <th className="py-2 px-4 border-b text-right">Total</th>
-                  <th className="py-2 px-4 border-b text-center">Action</th>
+                  <th className="py-2 px-4 text-left">Code</th>
+                  <th className="py-2 px-4 text-left">Description</th>
+                  <th className="py-2 px-4 text-right">Fee</th>
+                  <th className="py-2 px-4 text-center">Select</th>
                 </tr>
               </thead>
               <tbody>
-                {fields.map((item, index) => (
-                  <tr key={item.id}>
-                    <td className="py-2 px-4 border-b">{item.code}</td>
-                    <td className="py-2 px-4 border-b">{item.description}</td>
-                    <td className="py-2 px-4 border-b text-center">
-                      {item.toothNumber ?? 'N/A'}
-                    </td>
-                    <td className="py-2 px-4 border-b text-right">${item.fee.toFixed(2)}</td>
-                    <td className="py-2 px-4 border-b text-center">
-                      <input
-                        type="number"
-                        min="1"
-                        className="w-16 p-1 border rounded text-center"
-                        {...register(`services.${index}.quantity`, { valueAsNumber: true })}
-                      />
-                    </td>
-                    <td className="py-2 px-4 border-b text-right">
-                      ${(item.fee * (watchedServices[index]?.quantity || 1)).toFixed(2)}
-                    </td>
-                    <td className="py-2 px-4 border-b text-center">
-                      <button
-                        type="button"
-                        className="text-red-500 hover:text-red-700"
-                        onClick={() => handleRemoveItem(index)}
-                      >
-                        <FaTrash />
-                      </button>
+                {filteredCodes.length > 0 ? (
+                  filteredCodes.map((code) => (
+                    <tr
+                      key={code.code}
+                      className={selectedCode?.code === code.code ? 'bg-blue-50' : ''}
+                    >
+                      <td className="py-2 px-4">{code.code}</td>
+                      <td className="py-2 px-4">{code.description}</td>
+                      <td className="py-2 px-4 text-right">${code.fee.toFixed(2)}</td>
+                      <td className="py-2 px-4 text-center">
+                        <Button
+                          type="button"
+                          variant={selectedCode?.code === code.code ? 'primary' : 'secondary'}
+                          size="sm"
+                          className="px-2"
+                          onClick={() => setSelectedCode(code)}
+                        >
+                          {selectedCode?.code === code.code ? 'Selected' : 'Select'}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="4" className="py-4 text-center text-gray-500">
+                      No procedures found
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500">
-            No billing items added yet
-          </div>
-        )}
-      </div>
-
-      {/* Additional Information and Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h3 className="text-lg font-medium mb-4">Additional Information</h3>
-          <Input
-            label="Discount (%)"
-            type="number"
-            min={0}
-            max={100}
-            {...register('discount', { valueAsNumber: true })}
-            error={errors.discount?.message}
-          />
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea
-              {...register('notes')}
-              rows={4}
-              className="w-full p-2 border rounded-md"
-              placeholder="Add any notes or special instructions..."
+          {selectedCode && (
+            <div className="bg-blue-50 p-4 rounded-lg mb-4 flex flex-col md:flex-row justify-between items-center">
+              <div>
+                <p className="font-bold">{selectedCode.code}</p>
+                <p>{selectedCode.description}</p>
+                <p className="text-blue-700">${selectedCode.fee.toFixed(2)}</p>
+              </div>
+              <div className="flex items-center mt-2 md:mt-0">
+                <label className="mr-2">Quantity:</label>
+                <Input
+                  type="number"
+                  min="1"
+                  className="w-16 text-center"
+                  value={quantity}
+                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                />
+                <Button className="ml-4" onClick={handleAddItem} variant="success" size="sm">
+                  Add
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+        {/* Billing Items */}
+        <Card title="Billing Items" className="mb-4">
+          {fields.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full bg-white border rounded-lg overflow-hidden">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="py-2 px-4 text-left font-semibold">Code</th>
+                    <th className="py-2 px-4 text-left font-semibold">Description</th>
+                    <th className="py-2 px-4 text-center font-semibold">Tooth #</th>
+                    <th className="py-2 px-4 text-right font-semibold">Fee</th>
+                    <th className="py-2 px-4 text-center font-semibold">Qty</th>
+                    <th className="py-2 px-4 text-right font-semibold">Total</th>
+                    <th className="py-2 px-4 text-center font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fields.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2 px-4 border-b">{item.code}</td>
+                      <td className="py-2 px-4 border-b">{item.description}</td>
+                      <td className="py-2 px-4 border-b text-center">{item.toothNumber ?? 'N/A'}</td>
+                      <td className="py-2 px-4 border-b text-right">${item.fee.toFixed(2)}</td>
+                      <td className="py-2 px-4 border-b text-center">
+                        <Input
+                          type="number"
+                          min="1"
+                          className="w-14 text-center py-1 px-2 text-sm border-gray-300 rounded"
+                          style={{ minWidth: 0 }}
+                          {...register(`services.${index}.quantity`, { valueAsNumber: true })}
+                        />
+                      </td>
+                      <td className="py-2 px-4 border-b text-right font-semibold">${(item.fee * (watchedServices[index]?.quantity || 1)).toFixed(2)}</td>
+                      <td className="py-2 px-4 border-b text-center">
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleRemoveItem(index)}
+                          className="p-2"
+                        >
+                          <FaTrash />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500">
+              No billing items added yet
+            </div>
+          )}
+        </Card>
+        {/* Additional Information and Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card title="Additional Information" className="mb-4">
+            <Input
+              label="Discount (%)"
+              type="number"
+              min={0}
+              max={100}
+              {...register('discount', { valueAsNumber: true })}
+              error={errors.discount?.message}
             />
-          </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea
+                {...register('notes')}
+                rows={4}
+                className="w-full p-2 border rounded-md"
+                placeholder="Add any notes or special instructions..."
+              />
+            </div>
+          </Card>
+          <Card title="Summary" className="mb-4 border border-gray-200 bg-gray-50" bodyClassName="p-6">
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between text-base">
+                <span>Subtotal:</span>
+                <span className="font-medium">${calculateSubtotal().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-base">
+                <span>Discount:</span>
+                <span className="font-medium">-${calculateDiscountAmount().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-lg mt-2 border-t pt-2">
+                <span>Total:</span>
+                <span>${calculateTotal().toFixed(2)}</span>
+              </div>
+            </div>
+          </Card>
         </div>
-        <div>
-          <h3 className="text-lg font-medium mb-4">Summary</h3>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="flex justify-between py-2 border-b">
-              <span>Subtotal:</span>
-              <span className="font-medium">${calculateSubtotal().toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between py-2 border-b text-red-500">
-              <span>Discount ({watchedDiscount || 0}%):</span>
-              <span>- ${calculateDiscountAmount().toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between py-2 border-b font-semibold">
-              <span>Total:</span>
-              <span>${calculateTotal().toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button type="submit" variant="primary" loading={loading} icon={<FaFileInvoiceDollar />}>
-          Create Invoice
-        </Button>
-      </div>
-
-      <div className="text-xs text-gray-500 italic mt-4">
-        <p>
-          <FaMoneyBillWave className="inline mr-1" />
-          Insurance estimates are based on the information available and may not reflect the actual amount covered by the patient's insurance provider. Final coverage is determined by the insurance company at the time of claim processing.
-        </p>
-      </div>
+      </Card>
     </form>
   );
 };

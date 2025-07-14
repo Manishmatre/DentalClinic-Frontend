@@ -137,13 +137,13 @@ const EnhancedDentalEHR = () => {
           </button>
           <button
             className={`px-4 py-3 text-sm font-medium flex items-center ${
-              activeTab === 'treatments'
+              activeTab === 'treatment-management'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
-            onClick={() => setActiveTab('treatments')}
+            onClick={() => setActiveTab('treatment-management')}
           >
-            <FaHistory className="mr-1" /> Treatment History
+            <FaHistory className="mr-1" /> Treatment Management
           </button>
           <button
             className={`px-4 py-3 text-sm font-medium flex items-center ${
@@ -192,7 +192,7 @@ const EnhancedDentalEHR = () => {
           {activeTab === 'chart' && (
             <AdvancedToothChart patientId={patientId} readOnly={!canEditDental} />
           )}
-          {activeTab === 'treatments' && (
+          {activeTab === 'treatment-management' && (
             <TreatmentHistory patientId={patientId} readOnly={!canEditDental} />
           )}
           {activeTab === 'images' && (

@@ -5,7 +5,14 @@ import {
   FaChild, FaUser, FaExchangeAlt, FaInfoCircle, FaTimes 
 } from 'react-icons/fa';
 import dentalService from '../../api/dental/dentalService';
+import staffService from '../../api/staff/staffService.js.new';
 import ToothSvg from './ToothSvg';
+import Card from '../ui/Card';
+import Button from '../ui/Button';
+import { TOOTH_CONDITIONS } from '../../constants/dentalConstants';
+import AsyncSelect from 'react-select/async';
+import Select from 'react-select';
+import { useAuth } from '../../hooks/useAuth';
 
 // Tooth type mapping - which teeth are molars, premolars, etc.
 const TOOTH_TYPES = {
@@ -55,20 +62,6 @@ const NUMBERING_SYSTEMS = [
   { id: 'palmer', name: 'Palmer Notation' }
 ];
 
-// Tooth conditions
-const TOOTH_CONDITIONS = [
-  { value: 'healthy', label: 'Healthy', color: '#4CAF50' },
-  { value: 'caries', label: 'Caries', color: '#F44336' },
-  { value: 'filled', label: 'Filled', color: '#2196F3' },
-  { value: 'crown', label: 'Crown', color: '#9C27B0' },
-  { value: 'missing', label: 'Missing', color: '#9E9E9E' },
-  { value: 'implant', label: 'Implant', color: '#FF9800' },
-  { value: 'root-canal', label: 'Root Canal', color: '#795548' },
-  { value: 'bridge', label: 'Bridge', color: '#607D8B' },
-  { value: 'veneer', label: 'Veneer', color: '#00BCD4' },
-  { value: 'extraction-needed', label: 'Extraction Needed', color: '#E91E63' }
-];
-
 // Tooth surfaces
 const TOOTH_SURFACES = [
   { value: 'mesial', label: 'Mesial (M)', position: 'left' },
@@ -89,6 +82,10 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   const [selectedCondition, setSelectedCondition] = useState('healthy');
   const [selectedSurfaces, setSelectedSurfaces] = useState([]);
   const [notes, setNotes] = useState('');
+  const [cost, setCost] = useState('');
+  const [discountPercent, setDiscountPercent] = useState('');
+  const [discountAmount, setDiscountAmount] = useState('');
+  const [finalCost, setFinalCost] = useState('');
   
   // State for treatment management
   const [treatmentHistory, setTreatmentHistory] = useState([]);
@@ -96,7 +93,6 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   const [procedure, setProcedure] = useState('');
   const [treatmentDate, setTreatmentDate] = useState(new Date().toISOString().split('T')[0]);
   const [treatmentNotes, setTreatmentNotes] = useState('');
-  const [cost, setCost] = useState('');
   const [status, setStatus] = useState('completed'); // 'planned' or 'completed'
   
   // State for UI controls
@@ -104,10 +100,87 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   const [numberingSystem, setNumberingSystem] = useState('universal');
   const [showLegend, setShowLegend] = useState(true);
 
+  // State for dropdowns
+  const [doctors, setDoctors] = useState([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState('');
+  // Static list of common dental treatments
+  const TREATMENT_TYPES = [
+    { value: 'filling', label: 'Filling' },
+    { value: 'root_canal', label: 'Root Canal' },
+    { value: 'crown', label: 'Crown' },
+    { value: 'extraction', label: 'Extraction' },
+    { value: 'scaling', label: 'Scaling' },
+    { value: 'bridge', label: 'Bridge' },
+    { value: 'implant', label: 'Implant' },
+    { value: 'veneer', label: 'Veneer' },
+    { value: 'inlay_onlay', label: 'Inlay/Onlay' },
+    { value: 'whitening', label: 'Whitening' },
+    { value: 'braces', label: 'Braces' },
+    { value: 'retainer', label: 'Retainer' },
+    { value: 'fluoride', label: 'Fluoride Treatment' },
+    { value: 'sealant', label: 'Sealant' },
+    { value: 'denture', label: 'Denture' },
+    { value: 'apicoectomy', label: 'Apicoectomy' },
+    { value: 'gum_surgery', label: 'Gum Surgery' },
+    { value: 'bone_graft', label: 'Bone Graft' },
+    { value: 'sinus_lift', label: 'Sinus Lift' },
+    { value: 'tmj_treatment', label: 'TMJ Treatment' },
+    { value: 'night_guard', label: 'Night Guard' },
+    { value: 'mouth_guard', label: 'Mouth Guard' },
+    { value: 'space_maintainer', label: 'Space Maintainer' },
+    { value: 'frenectomy', label: 'Frenectomy' },
+    { value: 'pulpotomy', label: 'Pulpotomy' },
+    { value: 'pulp_capping', label: 'Pulp Capping' },
+    { value: 'orthodontic_consult', label: 'Orthodontic Consult' },
+    { value: 'oral_surgery', label: 'Oral Surgery' },
+    { value: 'other', label: 'Other' }
+  ];
+  const [selectedTreatmentType, setSelectedTreatmentType] = useState('');
+
+  // State for treatment tabs
+  const [treatmentTab, setTreatmentTab] = useState('plan'); // 'plan' or 'management'
+
+  // Track which discount field was last changed
+  const [lastDiscountInput, setLastDiscountInput] = useState(''); // 'percent' or 'amount'
+
   // Fetch dental chart data
   useEffect(() => {
     fetchDentalChart();
   }, [patientId]);
+
+  // Automatically calculate final cost when cost, discountPercent, or discountAmount changes
+  useEffect(() => {
+    let baseCost = parseFloat(cost) || 0;
+    let percent = parseFloat(discountPercent) || 0;
+    let amount = parseFloat(discountAmount) || 0;
+    let percentDiscount = baseCost * (percent / 100);
+    let totalDiscount = percentDiscount + amount;
+    let final = Math.max(0, baseCost - totalDiscount);
+    setFinalCost(final.toFixed(2));
+  }, [cost, discountPercent, discountAmount]);
+
+  // Sync discountAmount when discountPercent changes (if last changed was percent)
+  useEffect(() => {
+    if (lastDiscountInput === 'percent') {
+      const baseCost = parseFloat(cost) || 0;
+      const percent = parseFloat(discountPercent) || 0;
+      if (baseCost > 0 && percent >= 0) {
+        setDiscountAmount(((baseCost * percent) / 100).toFixed(2));
+      }
+    }
+  }, [discountPercent, cost]);
+
+  // Sync discountPercent when discountAmount changes (if last changed was amount)
+  useEffect(() => {
+    if (lastDiscountInput === 'amount') {
+      const baseCost = parseFloat(cost) || 0;
+      const amount = parseFloat(discountAmount) || 0;
+      if (baseCost > 0 && amount >= 0) {
+        setDiscountPercent(((amount / baseCost) * 100).toFixed(2));
+      }
+    }
+  }, [discountAmount, cost]);
 
   // Fetch dental chart data function
   const fetchDentalChart = async () => {
@@ -185,6 +258,47 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
     }
   };
 
+  // Fetch dropdown options
+  useEffect(() => {
+    setDoctorsLoading(true);
+    staffService.getStaff({ role: 'Doctor', status: 'Active', limit: 100 }).then(res => {
+      setDoctors(res.data || []);
+      setDoctorsLoading(false);
+    });
+  }, []);
+
+  const { clinic, user } = useAuth ? useAuth() : { clinic: null, user: null };
+  let clinicId = null;
+  if (user && user.clinicId) {
+    clinicId = typeof user.clinicId === 'object' ? user.clinicId._id : user.clinicId;
+  } else if (clinic && clinic._id) {
+    clinicId = clinic._id;
+  } else if (clinic && clinic.id) {
+    clinicId = clinic.id;
+  } else {
+    const storedClinic = localStorage.getItem('clinicData');
+    if (storedClinic) {
+      try {
+        const parsed = JSON.parse(storedClinic);
+        clinicId = parsed._id || parsed.id;
+      } catch {}
+    }
+  }
+
+  // Async doctor loader for dropdown
+  const loadDoctorOptions = async (inputValue) => {
+    const params = { role: 'Doctor', status: 'Active', limit: 100 };
+    if (clinicId) params.clinic = clinicId;
+    if (inputValue) params.search = inputValue;
+    const res = await staffService.getStaff(params);
+    const staffArray = Array.isArray(res?.data) ? res.data : [];
+    return staffArray.map(doc => ({
+      value: doc._id,
+      label: doc.name + (doc.specialization ? ` (${doc.specialization})` : ''),
+      data: doc
+    }));
+  };
+
   // Handle tooth click
   const handleToothClick = (toothNumber) => {
     setSelectedTooth(toothNumber);
@@ -193,10 +307,18 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
       setSelectedCondition(toothData.condition || 'healthy');
       setSelectedSurfaces(toothData.surfaces || []);
       setNotes(toothData.notes || '');
+      setCost(toothData.cost || '');
+      setDiscountPercent(toothData.discountPercent || '');
+      setDiscountAmount(toothData.discountAmount || '');
+      setFinalCost(toothData.finalCost || '');
     } else {
       setSelectedCondition('healthy');
       setSelectedSurfaces([]);
       setNotes('');
+      setCost('');
+      setDiscountPercent('');
+      setDiscountAmount('');
+      setFinalCost('');
     }
   };
 
@@ -212,9 +334,81 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   };
 
   // Handle condition change
-  const handleConditionChange = (condition) => {
-    if (!readOnly) {
+  const handleConditionChange = async (condition) => {
+    if (!readOnly && selectedTooth) {
+      if (!chartData || !chartData._id) {
+        toast.error('Dental chart not loaded. Please wait and try again.');
+        return;
+      }
       setSelectedCondition(condition);
+      try {
+        await dentalService.updateToothRecord(
+          chartData._id,
+          selectedTooth,
+          {
+            doctor: selectedDoctor,
+            condition: condition,
+            surfaces: selectedSurfaces,
+            treatmentType: selectedTreatmentType,
+            notes: notes,
+            cost: parseFloat(cost) || 0,
+            discountPercent: parseFloat(discountPercent) || 0,
+            discountAmount: parseFloat(discountAmount) || 0,
+            finalCost: parseFloat(finalCost) || 0
+          }
+        );
+        setTeethData(prev => ({
+          ...prev,
+          [selectedTooth]: {
+            ...prev[selectedTooth],
+            condition: condition
+          }
+        }));
+        toast.success(`Condition updated for Tooth #${selectedTooth}`);
+      } catch (error) {
+        console.error('Error updating condition:', error);
+        toast.error('Failed to update condition');
+      }
+    }
+  };
+
+  // Handle affected surfaces change (instant save)
+  const handleSurfacesChange = async (option) => {
+    if (!readOnly && selectedTooth) {
+      if (!chartData || !chartData._id) {
+        toast.error('Dental chart not loaded. Please wait and try again.');
+        return;
+      }
+      const newSurfaces = option ? [option.value] : [];
+      setSelectedSurfaces(newSurfaces);
+      try {
+        await dentalService.updateToothRecord(
+          chartData._id,
+          selectedTooth,
+          {
+            doctor: selectedDoctor,
+            condition: selectedCondition,
+            surfaces: newSurfaces,
+            treatmentType: selectedTreatmentType,
+            notes: notes,
+            cost: parseFloat(cost) || 0,
+            discountPercent: parseFloat(discountPercent) || 0,
+            discountAmount: parseFloat(discountAmount) || 0,
+            finalCost: parseFloat(finalCost) || 0
+          }
+        );
+        setTeethData(prev => ({
+          ...prev,
+          [selectedTooth]: {
+            ...prev[selectedTooth],
+            surfaces: newSurfaces
+          }
+        }));
+        toast.success(`Affected surfaces updated for Tooth #${selectedTooth}`);
+      } catch (error) {
+        console.error('Error updating surfaces:', error);
+        toast.error('Failed to update affected surfaces');
+      }
     }
   };
 
@@ -228,36 +422,34 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   // Save tooth data
   const handleSaveTooth = async () => {
     if (readOnly || !selectedTooth) return;
-    
+    if (!chartData || !chartData._id) {
+      toast.error('Dental chart not loaded. Please wait and try again.');
+      return;
+    }
     try {
-      // Update local state
-      const updatedTeethData = {
-        ...teethData,
-        [selectedTooth]: {
+      // Save to API only
+      let baseCost = parseFloat(cost) || 0;
+      let percent = parseFloat(discountPercent) || 0;
+      let amount = parseFloat(discountAmount) || 0;
+      let percentDiscount = baseCost * (percent / 100);
+      let totalDiscount = percentDiscount + amount;
+      let final = Math.max(0, baseCost - totalDiscount);
+      await dentalService.updateToothRecord(
+        chartData._id,
+        selectedTooth,
+        {
+          doctor: selectedDoctor,
           condition: selectedCondition,
           surfaces: selectedSurfaces,
-          notes: notes
+          treatmentType: selectedTreatmentType,
+          notes: notes,
+          cost: baseCost,
+          discountPercent: percent,
+          discountAmount: amount,
+          finalCost: final
         }
-      };
-      
-      setTeethData(updatedTeethData);
-      
-      // Save to API
-      try {
-        await dentalService.updateToothRecord(
-          chartData._id,
-          selectedTooth,
-          {
-            condition: selectedCondition,
-            surfaces: selectedSurfaces,
-            notes: notes
-          }
-        );
-        toast.success(`Tooth #${selectedTooth} updated successfully`);
-      } catch (apiError) {
-        console.log('API not available, changes saved locally only');
-        toast.info('Changes saved locally (demo mode)');
-      }
+      );
+      toast.success(`Tooth #${selectedTooth} updated successfully`);
     } catch (error) {
       console.error('Error saving tooth data:', error);
       toast.error('Failed to save tooth data');
@@ -354,78 +546,67 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
 
     // Render adult dentition
     if (dentitionType === 'adult') {
+      // Helper to get arch offset
+      const getArchOffset = (i, total) => {
+        // Parabola: y = -a(x-h)^2 + k
+        // Center is at h = (total-1)/2
+        const h = (total - 1) / 2;
+        const a = 0.7; // arch height factor
+        const k = 0; // vertical shift
+        const x = i;
+        return -a * Math.pow(x - h, 2) + a * Math.pow(h, 2) + k;
+      };
       return (
         <div className="tooth-chart">
           {/* Upper Arch */}
-          <div className="upper-arch mb-8">
+          <div className="upper-arch mt-12 mb-20">
             <div className="flex justify-center mb-2">
               <h3 className="text-sm font-medium text-gray-500">Upper Arch</h3>
             </div>
             <div className="flex justify-center">
-              <div className="grid grid-cols-8 gap-1">
-                {/* Upper Right (1-8) */}
-                {[1, 2, 3, 4, 5, 6, 7, 8].map(toothNumber => (
-                  <div key={toothNumber} className="tooth-container">
-                    <ToothSvg 
-                      toothNumber={convertToothNumber(toothNumber)}
-                      toothType={getToothType(toothNumber)}
-                      condition={teethData[toothNumber]?.condition || 'healthy'}
-                      surfaces={teethData[toothNumber]?.surfaces || []}
-                      selected={selectedTooth === toothNumber}
-                      onClick={() => handleToothClick(toothNumber)}
-                    />
-                  </div>
-                ))}
-                {/* Upper Left (9-16) */}
-                {[9, 10, 11, 12, 13, 14, 15, 16].map(toothNumber => (
-                  <div key={toothNumber} className="tooth-container">
-                    <ToothSvg 
-                      toothNumber={convertToothNumber(toothNumber)}
-                      toothType={getToothType(toothNumber)}
-                      condition={teethData[toothNumber]?.condition || 'healthy'}
-                      surfaces={teethData[toothNumber]?.surfaces || []}
-                      selected={selectedTooth === toothNumber}
-                      onClick={() => handleToothClick(toothNumber)}
-                    />
-                  </div>
-                ))}
+              <div className="grid grid-cols-16 gap-1">
+                {[...Array(16)].map((_, i) => {
+                  const toothNumber = i + 1;
+                  const offset = getArchOffset(i, 16);
+                  return (
+                    <div key={toothNumber} className="tooth-container" style={{ transform: `translateY(${offset}px)` }}>
+                      <ToothSvg 
+                        toothNumber={convertToothNumber(toothNumber)}
+                        toothType={getToothType(toothNumber)}
+                        condition={teethData[toothNumber]?.condition || 'healthy'}
+                        surfaces={teethData[toothNumber]?.surfaces || []}
+                        selected={selectedTooth === toothNumber}
+                        onClick={() => handleToothClick(toothNumber)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
-          
           {/* Lower Arch */}
-          <div className="lower-arch">
+          <div className="lower-arch mb-20">
             <div className="flex justify-center mb-2">
               <h3 className="text-sm font-medium text-gray-500">Lower Arch</h3>
             </div>
             <div className="flex justify-center">
-              <div className="grid grid-cols-8 gap-1">
-                {/* Lower Right (32-25) */}
-                {[32, 31, 30, 29, 28, 27, 26, 25].map(toothNumber => (
-                  <div key={toothNumber} className="tooth-container">
-                    <ToothSvg 
-                      toothNumber={convertToothNumber(toothNumber)}
-                      toothType={getToothType(toothNumber)}
-                      condition={teethData[toothNumber]?.condition || 'healthy'}
-                      surfaces={teethData[toothNumber]?.surfaces || []}
-                      selected={selectedTooth === toothNumber}
-                      onClick={() => handleToothClick(toothNumber)}
-                    />
-                  </div>
-                ))}
-                {/* Lower Left (24-17) */}
-                {[24, 23, 22, 21, 20, 19, 18, 17].map(toothNumber => (
-                  <div key={toothNumber} className="tooth-container">
-                    <ToothSvg 
-                      toothNumber={convertToothNumber(toothNumber)}
-                      toothType={getToothType(toothNumber)}
-                      condition={teethData[toothNumber]?.condition || 'healthy'}
-                      surfaces={teethData[toothNumber]?.surfaces || []}
-                      selected={selectedTooth === toothNumber}
-                      onClick={() => handleToothClick(toothNumber)}
-                    />
-                  </div>
-                ))}
+              <div className="grid grid-cols-16 gap-1">
+                {[...Array(16)].map((_, i) => {
+                  const toothNumber = 32 - i;
+                  const offset = -getArchOffset(i, 16); // invert for lower arch
+                  return (
+                    <div key={toothNumber} className="tooth-container" style={{ transform: `translateY(${offset}px)` }}>
+                      <ToothSvg 
+                        toothNumber={convertToothNumber(toothNumber)}
+                        toothType={getToothType(toothNumber)}
+                        condition={teethData[toothNumber]?.condition || 'healthy'}
+                        surfaces={teethData[toothNumber]?.surfaces || []}
+                        selected={selectedTooth === toothNumber}
+                        onClick={() => handleToothClick(toothNumber)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -515,142 +696,220 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
 
   // Render tooth details panel
   const renderToothDetails = () => {
-    if (!selectedTooth) {
-      return (
-        <div className="text-center p-4">
-          <FaTooth className="text-4xl text-gray-400 mx-auto mb-2" />
-          <p className="text-gray-500">Select a tooth to view details</p>
-        </div>
-      );
-    }
-
+    const disabled = readOnly;
     return (
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Tooth #{selectedTooth}</h3>
-          {!readOnly && (
-            <div className="flex space-x-2">
-              <button 
-                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm flex items-center"
-                onClick={handleSaveTooth}
-              >
-                <FaSave className="mr-1" /> Save
-              </button>
-              <button 
-                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center"
-                onClick={() => setShowTreatmentModal(true)}
-              >
-                <FaPlus className="mr-1" /> Treatment
-              </button>
+      <Card
+        title={<span className="font-semibold">{selectedTooth ? `Tooth #${selectedTooth}` : 'Tooth Details'}</span>}
+        actions={
+          selectedTooth && !readOnly && (
+            <div className="flex gap-2">
+              <Button variant="primary" size="sm" onClick={handleSaveTooth}>Save</Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowTreatmentModal(true)}>+ Treatment</Button>
             </div>
-          )}
+          )
+        }
+        className="m-4"
+        bodyClassName="space-y-4"
+      >
+        {/* Select Doctor Dropdown */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Select Doctor</label>
+          <AsyncSelect
+            cacheOptions
+            defaultOptions
+            isClearable
+            isSearchable
+            loadOptions={loadDoctorOptions}
+            value={selectedDoctor ? { value: selectedDoctor, label: (doctors.find(d => d._id === selectedDoctor)?.name) || 'Doctor' } : null}
+            onChange={option => setSelectedDoctor(option ? option.value : '')}
+            placeholder="Search for a doctor..."
+            isDisabled={disabled}
+            styles={{
+              control: (provided, state) => ({
+                ...provided,
+                borderColor: state.isFocused ? '#6366F1' : provided.borderColor,
+                boxShadow: state.isFocused ? '0 0 0 1px #6366F1' : provided.boxShadow,
+                '&:hover': {
+                  borderColor: state.isFocused ? '#6366F1' : '#CBD5E0',
+                },
+              }),
+              option: (provided, state) => ({
+                ...provided,
+                backgroundColor: state.isSelected ? '#6366F1' : state.isFocused ? '#E2E8F0' : provided.backgroundColor,
+                color: state.isSelected ? 'white' : provided.color,
+              }),
+            }}
+          />
         </div>
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
-          <div className="grid grid-cols-5 gap-2">
-            {TOOTH_CONDITIONS.map(condition => (
-              <div 
-                key={condition.value}
-                className={`
-                  p-2 rounded border cursor-pointer text-center text-sm
-                  ${selectedCondition === condition.value ? 'ring-2 ring-blue-500' : 'hover:bg-gray-50'}
-                  ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}
-                `}
-                style={{ backgroundColor: `${condition.color}20` }}
-                onClick={() => !readOnly && handleConditionChange(condition.value)}
+        {/* Condition Buttons */}
+        <div>
+          <div className="font-medium mb-1">Condition</div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+            {TOOTH_CONDITIONS.map((cond) => (
+              <button
+                key={cond.value}
+                type="button"
+                className={`rounded px-2 py-1 border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedCondition === cond.value ? 'border-indigo-800 scale-105 shadow' : 'border-gray-300'} text-white`}
+                style={{ backgroundColor: cond.color }}
+                onClick={() => handleConditionChange(cond.value)}
+                disabled={disabled}
               >
-                {condition.label}
-              </div>
+                {cond.label}
+              </button>
             ))}
           </div>
         </div>
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Affected Surfaces</label>
-          <div className="grid grid-cols-3 gap-2">
-            {TOOTH_SURFACES.map(surface => (
-              <div 
-                key={surface.value}
-                className={`
-                  p-2 rounded border cursor-pointer text-center text-sm
-                  ${selectedSurfaces.includes(surface.value) ? 'bg-blue-100 border-blue-500' : 'hover:bg-gray-50'}
-                  ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}
-                `}
-                onClick={() => !readOnly && handleSurfaceToggle(surface.value)}
-              >
-                {surface.label}
-              </div>
-            ))}
-          </div>
+        {/* Affected Surfaces */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Affected Surfaces</label>
+          <Select
+            className="w-full"
+            isClearable
+            isSearchable
+            options={TOOTH_SURFACES.map(surf => ({ value: surf.value, label: surf.label }))}
+            value={selectedSurfaces[0] ? { value: selectedSurfaces[0], label: TOOTH_SURFACES.find(s => s.value === selectedSurfaces[0])?.label } : null}
+            onChange={handleSurfacesChange}
+            placeholder="Select a surface"
+            isDisabled={disabled}
+            styles={{
+              control: (provided, state) => ({
+                ...provided,
+                borderColor: state.isFocused ? '#6366F1' : provided.borderColor,
+                boxShadow: state.isFocused ? '0 0 0 1px #6366F1' : provided.boxShadow,
+                '&:hover': {
+                  borderColor: state.isFocused ? '#6366F1' : '#CBD5E0',
+                },
+              }),
+              option: (provided, state) => ({
+                ...provided,
+                backgroundColor: state.isSelected ? '#6366F1' : state.isFocused ? '#E2E8F0' : provided.backgroundColor,
+                color: state.isSelected ? 'white' : provided.color,
+              }),
+            }}
+          />
         </div>
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+        {/* Select Treatment Type Dropdown */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Select Treatment Type</label>
+          <Select
+            className="w-full"
+            isClearable
+            isSearchable
+            options={TREATMENT_TYPES}
+            value={selectedTreatmentType ? TREATMENT_TYPES.find(t => t.value === selectedTreatmentType) : null}
+            onChange={option => setSelectedTreatmentType(option ? option.value : '')}
+            placeholder="Select a treatment type"
+            isDisabled={disabled}
+            styles={{
+              control: (provided, state) => ({
+                ...provided,
+                borderColor: state.isFocused ? '#6366F1' : provided.borderColor,
+                boxShadow: state.isFocused ? '0 0 0 1px #6366F1' : provided.boxShadow,
+                '&:hover': {
+                  borderColor: state.isFocused ? '#6366F1' : '#CBD5E0',
+                },
+              }),
+              option: (provided, state) => ({
+                ...provided,
+                backgroundColor: state.isSelected ? '#6366F1' : state.isFocused ? '#E2E8F0' : provided.backgroundColor,
+                color: state.isSelected ? 'white' : provided.color,
+              }),
+            }}
+          />
+        </div>
+        {/* Cost (INR) */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Cost (INR)</label>
+          <input
+            type="number"
+            className="w-full border rounded px-2 py-1"
+            value={cost}
+            onChange={e => setCost(e.target.value)}
+            placeholder="Enter cost in INR"
+            min="0"
+            step="0.01"
+            disabled={disabled}
+          />
+        </div>
+        {/* Discount Percent */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Discount (%)</label>
+          <input
+            type="number"
+            className="w-full border rounded px-2 py-1"
+            value={discountPercent}
+            onChange={e => { setDiscountPercent(e.target.value); setLastDiscountInput('percent'); }}
+            placeholder="Enter discount percent"
+            min="0"
+            max="100"
+            step="0.01"
+            disabled={disabled}
+          />
+        </div>
+        {/* Discount Amount */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Discount (Amount)</label>
+          <input
+            type="number"
+            className="w-full border rounded px-2 py-1"
+            value={discountAmount}
+            onChange={e => { setDiscountAmount(e.target.value); setLastDiscountInput('amount'); }}
+            placeholder="Enter discount amount"
+            min="0"
+            step="0.01"
+            disabled={disabled}
+          />
+        </div>
+        {/* Final Cost (calculated) */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Final Cost (INR)</label>
+          <input
+            type="number"
+            className="w-full border rounded px-2 py-1 bg-gray-100"
+            value={finalCost}
+            readOnly
+            placeholder="Final cost will be calculated"
+            disabled
+          />
+        </div>
+        {/* Notes */}
+        <div>
+          <div className="font-medium mb-1">Notes</div>
           <textarea
-            className="w-full border rounded p-2 text-sm"
-            rows="3"
+            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            rows={3}
             value={notes}
             onChange={handleNotesChange}
-            disabled={readOnly}
-            placeholder="Add notes about this tooth..."
-          ></textarea>
+            placeholder={selectedTooth ? "Add notes about this tooth..." : "No tooth selected"}
+            disabled={disabled}
+          />
         </div>
-        
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-1">Treatment History</h4>
-          {treatmentHistory.filter(t => t.toothNumber === selectedTooth).length > 0 ? (
-            <div className="border rounded divide-y max-h-40 overflow-y-auto">
-              {treatmentHistory
-                .filter(t => t.toothNumber === selectedTooth)
-                .map((treatment, index) => (
-                  <div key={index} className="p-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="font-medium">{treatment.procedure}</span>
-                      <span className="text-gray-500 text-xs">
-                        {new Date(treatment.date).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 text-xs mt-1">{treatment.notes}</p>
-                  </div>
-                ))
-              }
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 italic">No treatment history for this tooth</p>
-          )}
-        </div>
-      </div>
+        {!selectedTooth && (
+          <div className="text-gray-500 text-center py-4">No tooth selected. Select a tooth to edit details.</div>
+        )}
+      </Card>
     );
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md">
+    <Card className="bg-white rounded-lg shadow-md">
       {/* Chart Controls */}
       <div className="p-4 border-b flex flex-wrap justify-between items-center">
         <div className="flex items-center space-x-4 mb-2 md:mb-0">
           <h2 className="text-lg font-semibold">Dental Chart</h2>
           <div className="flex space-x-2">
-            <button
-              className={`px-3 py-1 rounded text-sm flex items-center ${
-                dentitionType === 'adult' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+            <Button
               onClick={() => setDentitionType('adult')}
+              variant={dentitionType === 'adult' ? 'primary' : 'secondary'}
             >
               <FaUser className="mr-1" /> Adult
-            </button>
-            <button
-              className={`px-3 py-1 rounded text-sm flex items-center ${
-                dentitionType === 'pediatric' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+            </Button>
+            <Button
               onClick={() => setDentitionType('pediatric')}
+              variant={dentitionType === 'pediatric' ? 'primary' : 'secondary'}
             >
               <FaChild className="mr-1" /> Pediatric
-            </button>
+            </Button>
           </div>
         </div>
         
@@ -667,50 +926,92 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             ))}
           </select>
           
-          <button
-            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm flex items-center"
-            onClick={() => setShowLegend(!showLegend)}
-          >
-            <FaInfoCircle className="mr-1" /> Legend
-          </button>
+          {/* Legend button removed */}
           
-          <button
-            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm flex items-center"
+          <Button
             onClick={() => window.print()}
           >
             <FaPrint className="mr-1" /> Print
-          </button>
+          </Button>
         </div>
       </div>
       
-      {/* Legend */}
-      {showLegend && (
-        <div className="p-4 bg-gray-50 border-b">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Legend</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            {TOOTH_CONDITIONS.map(condition => (
-              <div 
-                key={condition.value}
-                className="flex items-center space-x-2"
-              >
-                <div 
-                  className="w-4 h-4 rounded" 
-                  style={{ backgroundColor: condition.color }}
-                ></div>
-                <span className="text-xs">{condition.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Legend removed */}
       
       {/* Main Content */}
       <div className="flex flex-col md:flex-row">
         {/* Tooth Chart */}
-        <div className="w-full md:w-2/3 p-4 border-b md:border-b-0 md:border-r">
+        <div className="w-full md:w-2/3 p-4 md:border-b-0 md:border-r-0">
           {renderToothChart()}
+          {/* New Treatment Tabs */}
+          <div className="mt-8">
+            <div className="border-b border-gray-200 mb-4">
+              <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                <button
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  onClick={() => setTreatmentTab('plan')}
+                >
+                  Treatment Plan
+                </button>
+                <button
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'management' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  onClick={() => setTreatmentTab('management')}
+                >
+                  Treatment Management
+                </button>
+              </nav>
+            </div>
+            {/* Tab Content */}
+            {treatmentTab === 'plan' && (
+              <div>
+                {/* Planned Treatments Table/Card */}
+                {treatmentHistory.filter(t => t.status === 'planned').length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">No planned treatments</div>
+                ) : (
+                  <div className="space-y-2">
+                    {treatmentHistory.filter(t => t.status === 'planned').map((t, idx) => (
+                      <div key={t._id || idx} className="bg-white rounded shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="font-medium text-gray-700">{t.procedure}</div>
+                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
+                          {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
+                        </div>
+                        <div className="flex gap-2 mt-2 md:mt-0">
+                          <Button size="sm" variant="primary">Edit</Button>
+                          <Button size="sm" variant="danger">Delete</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {treatmentTab === 'management' && (
+              <div>
+                {/* Completed Treatments Table/Card */}
+                {treatmentHistory.filter(t => t.status === 'completed').length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">No completed treatments</div>
+                ) : (
+                  <div className="space-y-2">
+                    {treatmentHistory.filter(t => t.status === 'completed').map((t, idx) => (
+                      <div key={t._id || idx} className="bg-white rounded shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="font-medium text-gray-700">{t.procedure}</div>
+                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
+                          {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
+                        </div>
+                        <div className="flex gap-2 mt-2 md:mt-0">
+                          <Button size="sm" variant="primary">Edit</Button>
+                          <Button size="sm" variant="danger">Delete</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        
         {/* Tooth Details */}
         <div className="w-full md:w-1/3">
           {renderToothDetails()}
@@ -805,18 +1106,12 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             </div>
             
             <div className="flex justify-end space-x-2">
-              <button
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
-                onClick={() => setShowTreatmentModal(false)}
-              >
+              <Button onClick={() => setShowTreatmentModal(false)}>
                 Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                onClick={handleAddTreatment}
-              >
+              </Button>
+              <Button onClick={handleAddTreatment}>
                 Save Treatment
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -846,7 +1141,7 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
           filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
         }
       `}</style>
-    </div>
+    </Card>
   );
 };
 
