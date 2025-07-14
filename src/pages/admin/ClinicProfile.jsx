@@ -66,12 +66,16 @@ const ClinicProfile = () => {
       
       // Refresh auth to get updated clinic status
       await refreshAuth();
-      
-      // Now fetch the clinic data again
-      return await fetchClinicData();
+      // Do NOT call fetchClinicData here to avoid infinite loop
+      // return await fetchClinicData();
+      return response;
     } catch (err) {
       console.error('Error creating/activating clinic:', err);
-      setError('Failed to create or activate clinic. Please contact support.');
+      setError(
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to create or activate clinic. Please contact support.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -90,53 +94,42 @@ const ClinicProfile = () => {
       
       console.log('Fetching real clinic data for clinicId:', user.clinicId);
       
-      // First, try to activate the clinic if it's not active
-      try {
-        // This will ensure the clinic is active
+      // Fetch the clinic data
+      let clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
+      let clinicData = clinicDataResponse.data || clinicDataResponse;
+      console.log('Processed clinic data from API:', clinicData);
+      
+      // If clinic is missing or inactive, activate it
+      if (!clinicData || clinicData.status !== 'active') {
         await createOrActivateClinic();
-        console.log('Clinic activation check completed');
-      } catch (activationError) {
-        console.warn('Clinic activation check failed:', activationError);
-        // Continue anyway, as we've modified the backend to allow access to inactive clinics
+        // Fetch again after activation
+        clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
+        clinicData = clinicDataResponse.data || clinicDataResponse;
       }
       
-      // Now fetch the clinic data
-      try {
-        const response = await clinicService.getClinicDetails(user.clinicId);
-        console.log('API response:', response);
-        
-        // Extract clinic data - the API might return { data: {...} } or just {...}
-        const clinicData = response.data || response;
-        console.log('Processed clinic data from API:', clinicData);
-        
-        if (!clinicData) {
-          throw new Error('No clinic data received from server');
-        }
-        
-        // Store the complete clinic data
-        setClinicData(clinicData);
-        
-        // Initialize form with the fetched data
-        setFormData({
-          name: clinicData?.name || '',
-          email: clinicData?.email || '',
-          contact: clinicData?.contact || '',
-          clinicContact: clinicData?.clinicContact || '',
-          doctorName: clinicData?.doctorName || '',
-          address1: clinicData?.address1 || '',
-          address2: clinicData?.address2 || '',
-          city: clinicData?.city || '',
-          state: clinicData?.state || '',
-          country: clinicData?.country || '',
-          zipcode: clinicData?.zipcode || '',
-          about: clinicData?.about || '',
-          logo: clinicData?.logo || ''
-        });
-      } catch (apiError) {
-        console.error('Error fetching clinic data:', apiError);
-        setError('Failed to load clinic data: ' + 
-          (apiError.response?.data?.message || 'Server error. Please try again.'));
+      if (!clinicData) {
+        throw new Error('No clinic data received from server');
       }
+      
+      // Store the complete clinic data
+      setClinicData(clinicData);
+      
+      // Initialize form with the fetched data
+      setFormData({
+        name: clinicData?.name || '',
+        email: clinicData?.email || '',
+        contact: clinicData?.contact || '',
+        clinicContact: clinicData?.clinicContact || '',
+        doctorName: clinicData?.doctorName || '',
+        address1: clinicData?.address1 || '',
+        address2: clinicData?.address2 || '',
+        city: clinicData?.city || '',
+        state: clinicData?.state || '',
+        country: clinicData?.country || '',
+        zipcode: clinicData?.zipcode || '',
+        about: clinicData?.about || '',
+        logo: clinicData?.logo || ''
+      });
     } catch (err) {
       console.error('Error in fetchClinicData:', err);
       setError('Failed to load clinic data. Please try refreshing the page.');
