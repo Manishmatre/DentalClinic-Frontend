@@ -1,18 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import Button from '../ui/Button';
-import { FaSort, FaSortUp, FaSortDown, FaFilter, FaSearch, FaFileExport, FaPrint, FaEye, FaEdit, FaTrash } from 'react-icons/fa';
+import Card from '../ui/Card';
+import ChartCard from '../dashboard/ChartCard';
+import { 
+  FaSort, FaSortUp, FaSortDown, FaFilter, FaSearch, 
+  FaFileExport, FaPrint, FaEye, FaEdit, FaTrash, 
+  FaUserInjured, FaUserMd, FaTooth, FaCalendarCheck,
+  FaCalendarAlt, FaTimesCircle, FaCheck, FaClock,
+  FaDownload, FaClipboardList, FaExclamationTriangle
+} from 'react-icons/fa';
 import { CSVLink } from 'react-csv';
 import { toast } from 'react-toastify';
 import AppointmentDetailsModal from './AppointmentDetailsModal';
 import { format } from 'date-fns';
 
 const statusColors = {
-  'Scheduled': 'bg-blue-100 text-blue-800',
-  'Confirmed': 'bg-green-100 text-green-800',
-  'Cancelled': 'bg-red-100 text-red-800',
-  'Completed': 'bg-purple-100 text-purple-800',
-  'No Show': 'bg-orange-100 text-orange-800'
+  'Scheduled': 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+  'Confirmed': 'bg-blue-100 text-blue-800 border border-blue-200',
+  'Cancelled': 'bg-red-100 text-red-800 border border-red-200',
+  'Completed': 'bg-green-100 text-green-800 border border-green-200',
+  'No Show': 'bg-orange-100 text-orange-800 border border-orange-200'
+};
+
+const statusIcons = {
+  'Scheduled': <FaClock className="mr-1.5" />,
+  'Confirmed': <FaCalendarCheck className="mr-1.5" />,
+  'Cancelled': <FaTimesCircle className="mr-1.5" />,
+  'Completed': <FaCheck className="mr-1.5" />,
+  'No Show': <FaExclamationTriangle className="mr-1.5" />
 };
 
 const EnhancedAppointmentList = ({ 
@@ -157,10 +173,6 @@ const EnhancedAppointmentList = ({
     'Start Time': formatTime(appointment.startTime),
     'End Time': formatTime(appointment.endTime),
     Patient: appointment.patientId?.name || 'N/A',
-    Doctor: appointment.doctorId?.name || 'N/A',
-    Service: appointment.serviceType,
-    Status: appointment.status,
-    Notes: appointment.notes || ''
   }));
 
   // Handle print
@@ -178,75 +190,151 @@ const EnhancedAppointmentList = ({
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-4">
-        <p className="font-medium">Error loading appointments</p>
-        <p className="text-sm">{error}</p>
-      </div>
+      <ChartCard
+        title="Appointment Management"
+        actions={
+          <div className="flex space-x-2">
+            {/* Export CSV */}
+            <CSVLink 
+              data={filteredAppointments.map(appointment => ({
+                'Date': format(new Date(appointment.startTime), 'yyyy-MM-dd'),
+                'Time': format(new Date(appointment.startTime), 'HH:mm'),
+                'Patient': appointment.patientId?.name || 'Unknown',
+                'Doctor': appointment.doctorId?.name || 'Unknown',
+                'Service': appointment.serviceType || '',
+                'Status': appointment.status || '',
+                'Notes': appointment.notes || ''
+              }))}
+              filename={`appointments-${new Date().toISOString().slice(0, 10)}.csv`}
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors duration-150 shadow-sm"
+            >
+              <FaDownload className="mr-2" /> Export CSV
+            </CSVLink>
+            
+            {/* Print */}
+            <button
+              onClick={handlePrint}
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors duration-150 shadow-sm"
+            >
+              <FaPrint className="mr-2" /> Print
+            </button>
+          </div>
+        }
+      >
+        <div className="bg-red-50 p-4 mb-6 rounded-lg border border-red-200 shadow-sm">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <FaExclamationTriangle className="h-5 w-5 text-red-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error loading appointments</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+              <div className="mt-4">
+                <Button variant="danger" size="sm" onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ChartCard>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Filters and Actions */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
-        <div className="flex items-center space-x-2 w-full md:w-auto">
-          <div className="relative flex-grow md:flex-grow-0 md:w-64">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FaSearch className="text-gray-400" />
-            </div>
-            <input
-              type="text"
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Search appointments..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          
-          <select
-            className="block w-full md:w-auto pl-3 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="Scheduled">Scheduled</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="Cancelled">Cancelled</option>
-            <option value="Completed">Completed</option>
-            <option value="No Show">No Show</option>
-          </select>
-        </div>
-        
+    <ChartCard
+      title="Appointment Management"
+      actions={
         <div className="flex space-x-2">
+          {/* Export CSV */}
           <CSVLink 
-            data={csvData} 
-            filename="appointments.csv"
-            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            data={filteredAppointments.map(appointment => ({
+              'Date': format(new Date(appointment.startTime), 'yyyy-MM-dd'),
+              'Time': format(new Date(appointment.startTime), 'HH:mm'),
+              'Patient': appointment.patientId?.name || 'Unknown',
+              'Doctor': appointment.doctorId?.name || 'Unknown',
+              'Service': appointment.serviceType || '',
+              'Status': appointment.status || '',
+              'Notes': appointment.notes || ''
+            }))}
+            filename={`appointments-${new Date().toISOString().slice(0, 10)}.csv`}
+            className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors duration-150 shadow-sm"
           >
-            <FaFileExport className="mr-2" /> Export
+            <FaDownload className="mr-2" /> Export CSV
           </CSVLink>
           
-          <Button
-            variant="outline"
-            size="sm"
+          {/* Print */}
+          <button
             onClick={handlePrint}
-            icon={<FaPrint />}
+            className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors duration-150 shadow-sm"
           >
-            Print
-          </Button>
+            <FaPrint className="mr-2" /> Print
+          </button>
+        </div>
+      }
+    >
+      {/* Filters and Actions */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+          <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
+            {/* Search */}
+            <div className="relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <FaSearch className="text-gray-400" />
+              </div>
+              <input
+                type="text"
+                className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 pr-12 py-2 sm:text-sm border-gray-300 rounded-md"
+                placeholder="Search patient, doctor or service"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            {/* Status Filter */}
+            <div className="relative inline-block">
+              <div className="flex items-center">
+                <FaFilter className="text-gray-400 mr-2" />
+                <select
+                  className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="No Show">No Show</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-500">
+              {filteredAppointments.length} appointments found
+            </span>
+          </div>
         </div>
       </div>
       
       {/* Table */}
       {filteredAppointments.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No appointments found.</p>
+        <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-100">
+          <div className="flex flex-col items-center justify-center p-6">
+            <FaCalendarAlt className="w-12 h-12 text-gray-300 mb-4" />
+            <p className="text-gray-500 text-lg font-medium">No appointments found</p>
+            <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
+          </div>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto bg-white rounded-lg shadow-sm border border-gray-100">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
-              <tr>
+              <tr className="border-b border-gray-200">
                 <th 
                   scope="col" 
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
@@ -311,31 +399,42 @@ const EnhancedAppointmentList = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      {appointment.patientId?.name || 
-                       (typeof appointment.patientId === 'string' ? 'Patient ID: ' + appointment.patientId.substring(0, 8) + '...' : '') ||
-                       appointment.patientName || 
-                       (appointment.patient?.name) || 
-                       'Unknown Patient'}
+                      {appointment.patientName || 
+                       appointment.patientId?.name || 
+                       appointment.patient?.name || 
+                       (typeof appointment.patientId === 'string' && appointment.patientId ? 
+                         <span className="text-blue-600 hover:text-blue-800 cursor-pointer" 
+                               title="View patient details" 
+                               onClick={() => onView && onView(appointment)}>
+                           View Patient
+                         </span> : 'Unknown Patient')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {appointment.patientId?.phone || 
+                      {appointment.patientPhone || 
+                       appointment.patientId?.phone || 
                        appointment.patient?.phone || 
-                       appointment.patientPhone || 
                        'No phone'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
-                      Dr. {appointment.doctorId?.name || 
-                          (typeof appointment.doctorId === 'string' ? 'Doctor ID: ' + appointment.doctorId.substring(0, 8) + '...' : '') ||
-                          appointment.doctorName || 
-                          (appointment.doctor?.name) || 
-                          'Unknown Doctor'}
+                      {appointment.doctorName ? 
+                        `Dr. ${appointment.doctorName}` : 
+                        appointment.doctorId?.name ? 
+                          `Dr. ${appointment.doctorId.name}` : 
+                          appointment.doctor?.name ? 
+                            `Dr. ${appointment.doctor.name}` : 
+                            (typeof appointment.doctorId === 'string' && appointment.doctorId ? 
+                              <span className="text-blue-600 hover:text-blue-800 cursor-pointer" 
+                                    title="View doctor details" 
+                                    onClick={() => onView && onView(appointment)}>
+                                View Doctor
+                              </span> : 'Unknown Doctor')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {appointment.doctorId?.specialization || 
+                      {appointment.specialization || 
+                       appointment.doctorId?.specialization || 
                        appointment.doctor?.specialization || 
-                       appointment.specialization || 
                        'General'}
                     </div>
                   </td>
@@ -343,40 +442,80 @@ const EnhancedAppointmentList = ({
                     {appointment.serviceType}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[appointment.status] || 'bg-gray-100 text-gray-800'}`}>
+                    <span className={`px-2 py-1 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${statusColors[appointment.status] || 'bg-gray-100 text-gray-800'}`}>
+                      {statusIcons[appointment.status]}
                       {appointment.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end space-x-2">
-                      <Button
-                        variant="outline"
-                        size="xs"
+                      {/* View Button */}
+                      <button
                         onClick={() => handleViewAppointment(appointment)}
-                        icon={<FaEye />}
+                        className="inline-flex items-center p-1.5 text-indigo-600 hover:text-indigo-900 rounded-full hover:bg-indigo-50 transition-colors duration-150"
+                        title="View Details"
                       >
-                        View
-                      </Button>
-                      {['Admin', 'Receptionist'].includes(userRole) && onEdit && (
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() => onEdit(appointment)}
-                          icon={<FaEdit />}
-                        >
-                          Edit
-                        </Button>
+                        <FaEye className="h-4 w-4" />
+                      </button>
+                      
+                      {/* Status Update Buttons - Only for Admin and Receptionist */}
+                      {['Admin', 'Receptionist'].includes(userRole) && onUpdateStatus && (
+                        <>
+                          {appointment.status !== 'Completed' && (
+                            <button
+                              onClick={() => handleStatusUpdate(appointment, 'Completed')}
+                              className="inline-flex items-center p-1.5 text-green-600 hover:text-green-900 rounded-full hover:bg-green-50 transition-colors duration-150"
+                              title="Mark as Completed"
+                            >
+                              <FaCheck className="h-4 w-4" />
+                            </button>
+                          )}
+                          
+                          {appointment.status === 'Scheduled' && (
+                            <button
+                              onClick={() => handleStatusUpdate(appointment, 'Confirmed')}
+                              className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors duration-150"
+                              title="Confirm Appointment"
+                            >
+                              <FaCalendarCheck className="h-4 w-4" />
+                            </button>
+                          )}
+                        </>
                       )}
-                      {['Admin', 'Receptionist'].includes(userRole) && onDelete && (
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() => handleDelete(appointment._id)}
-                          icon={<FaTrash />}
-                          className="text-red-600 hover:text-red-900"
+                      
+                      {/* Edit Button */}
+                      {['Admin', 'Receptionist'].includes(userRole) && onEdit && (
+                        <button
+                          onClick={() => onEdit(appointment)}
+                          className="inline-flex items-center p-1.5 text-yellow-600 hover:text-yellow-900 rounded-full hover:bg-yellow-50 transition-colors duration-150"
+                          title="Edit Appointment"
                         >
-                          Delete
-                        </Button>
+                          <FaEdit className="h-4 w-4" />
+                        </button>
+                      )}
+                      
+                      {/* Cancel/Delete Button */}
+                      {['Admin', 'Receptionist'].includes(userRole) && (
+                        <>
+                          {appointment.status !== 'Cancelled' && onUpdateStatus && (
+                            <button
+                              onClick={() => handleStatusUpdate(appointment, 'Cancelled')}
+                              className="inline-flex items-center p-1.5 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors duration-150"
+                              title="Cancel Appointment"
+                            >
+                              <FaTimesCircle className="h-4 w-4" />
+                            </button>
+                          )}
+                          {onDelete && (
+                            <button
+                              onClick={() => onDelete(appointment._id)}
+                              className="inline-flex items-center p-1.5 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors duration-150"
+                              title="Delete Appointment"
+                            >
+                              <FaTrash className="h-4 w-4" />
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>
@@ -481,7 +620,7 @@ const EnhancedAppointmentList = ({
           userRole={userRole}
         />
       )}
-    </div>
+    </ChartCard>
   );
 };
 

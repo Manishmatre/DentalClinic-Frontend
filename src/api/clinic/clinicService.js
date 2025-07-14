@@ -340,7 +340,7 @@ const clinicService = {
     
     try {
       console.log(`Fetching staff for clinic ID: ${clinicId}`);
-      const response = await axios.get(`${BASE_URL}/${clinicId}/staff`);
+      const response = await axios.get(`/staff`, { params: { clinicId } });
       return response.data;
     } catch (error) {
       console.error('Error fetching staff:', error);
@@ -416,6 +416,35 @@ const clinicService = {
     } catch (error) {
       console.error('Error in activateClinic:', error);
       return handleApiError(error, 'activateClinic');
+    }
+  },
+
+  // Get doctors for a clinic
+  getDoctors: async (clinicId) => {
+    try {
+      if (!clinicId) {
+        // Try to get clinic ID from localStorage
+        const storedClinicData = localStorage.getItem('clinicData');
+        if (storedClinicData) {
+          try {
+            const parsedClinicData = JSON.parse(storedClinicData);
+            clinicId = parsedClinicData._id;
+          } catch (e) {
+            console.error('Error parsing clinicData from localStorage:', e);
+          }
+        }
+      }
+      if (!clinicId) {
+        console.warn('No clinicId provided to getDoctors');
+        return [];
+      }
+      // The backend endpoint for doctors is /doctors?clinicId=xxx
+      const response = await axios.get(`/doctors`, { params: { clinicId } });
+      // Always return the array directly
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      console.error('Error fetching doctors for clinic:', error);
+      return [];
     }
   }
 };

@@ -1,50 +1,66 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import appointmentService from '../../api/appointments/appointmentService';
+import dashboardService from '../../api/dashboard/dashboardService';
+import { formatRevenueData } from '../../utils/chartUtils';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import KpiCard from '../../components/dashboard/KpiCard';
+import ChartCard from '../../components/dashboard/ChartCard';
+import BarChart from '../../components/dashboard/BarChart';
+import LineChart from '../../components/dashboard/LineChart';
+import PieChart from '../../components/dashboard/PieChart';
+import { toast } from 'react-toastify';
+import {
+  FaCalendarCheck,
+  FaCalendarAlt,
+  FaUserPlus,
+  FaFileInvoiceDollar,
+  FaChartPie,
+  FaUserMd,
+  FaTooth,
+  FaClipboardList
+} from 'react-icons/fa';
 
 const ReceptionistDashboard = () => {
   const navigate = useNavigate();
   const { user, clinic } = useAuth();
-  const [todayAppointments, setTodayAppointments] = useState([]);
-  const [stats, setStats] = useState({
-    totalAppointments: 0,
-    confirmedAppointments: 0,
-    pendingPayments: 0,
-    todayRevenue: 0
+  const [dashboardData, setDashboardData] = useState({
+    todayAppointments: [],
+    stats: {
+      totalAppointments: 0,
+      confirmedAppointments: 0,
+      pendingPayments: 0,
+      todayRevenue: 0,
+      newPatients: 0,
+      appointmentsByStatus: [],
+      appointmentsByDoctor: [],
+      revenueByDay: []
+    }
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchDashboardData = useCallback(async () => {
+    if (!clinic?._id) return;
+    
     try {
       setIsLoading(true);
       setError(null);
 
-      const today = new Date();
-      const appointments = await appointmentService.getAppointments({
-        startDate: today.toISOString(),
-        endDate: new Date(today.setHours(23, 59, 59)).toISOString()
-      });
-
-      setTodayAppointments(appointments);
-      setStats({
-        totalAppointments: appointments.length,
-        confirmedAppointments: appointments.filter(a => a.status === 'Confirmed').length,
-        pendingPayments: 0, // TODO: Implement billing stats
-        todayRevenue: 0 // TODO: Implement revenue calculation
-      });
+      // Fetch receptionist dashboard data using our service
+      const data = await dashboardService.getReceptionistDashboardData(clinic._id);
+      setDashboardData(data);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
-      setError(err.response?.data?.message || 'Failed to load dashboard data');
+      setError('Failed to load dashboard data. Please try again later.');
+      toast.error('Error loading dashboard data');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clinic?._id]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -66,91 +82,203 @@ const ReceptionistDashboard = () => {
     }
   };
 
+  // Prepare chart data for appointments by status
+  const getAppointmentsByStatusChartData = () => {
+    if (!dashboardData.stats?.appointmentsByStatus?.length) return { labels: [], datasets: [] };
+    
+    return {
+      labels: dashboardData.stats.appointmentsByStatus.map(item => item.status),
+      datasets: [{
+        label: 'Appointments by Status',
+        data: dashboardData.stats.appointmentsByStatus.map(item => item.count),
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.6)',
+          'rgba(75, 192, 192, 0.6)',
+          'rgba(255, 206, 86, 0.6)',
+          'rgba(255, 99, 132, 0.6)',
+          'rgba(153, 102, 255, 0.6)'
+        ],
+        borderColor: [
+          'rgba(54, 162, 235, 1)',
+          'rgba(75, 192, 192, 1)',
+          'rgba(255, 206, 86, 1)',
+          'rgba(255, 99, 132, 1)',
+          'rgba(153, 102, 255, 1)'
+        ],
+        borderWidth: 1
+      }]
+    };
+  };
+
+  // Prepare chart data for appointments by doctor
+  const getAppointmentsByDoctorChartData = () => {
+    if (!dashboardData.stats?.appointmentsByDoctor?.length) return { labels: [], datasets: [] };
+    
+    return {
+      labels: dashboardData.stats.appointmentsByDoctor.map(item => item.doctor),
+      datasets: [{
+        label: 'Appointments by Doctor',
+        data: dashboardData.stats.appointmentsByDoctor.map(item => item.count),
+        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        borderWidth: 1
+      }]
+    };
+  };
+
+  // Prepare chart data for revenue by day
+  const getRevenueByDayChartData = () => {
+    if (!dashboardData.stats?.revenueByDay?.length) return { labels: [], datasets: [] };
+    
+    return {
+      labels: dashboardData.stats.revenueByDay.map(item => 
+        new Date(item.date).toLocaleDateString(undefined, { weekday: 'short' })
+      ),
+      datasets: [{
+        label: 'Revenue',
+        data: dashboardData.stats.revenueByDay.map(item => item.amount),
+        borderColor: '#4f46e5',
+        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+        fill: true,
+        tension: 0.4
+      }]
+    };
+  };
+
   if (isLoading) {
     return (
-      <div className="flex justify-center p-8">
-        <LoadingSpinner />
+      <div className="flex justify-center items-center h-full p-8">
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="p-8">
+        <Alert
+          variant="error"
+          title="Error Loading Dashboard"
+          message={error}
+        />
+        <div className="mt-4">
+          <Button onClick={fetchDashboardData}>Retry</Button>
+        </div>
       </div>
     );
   }
 
+  const { todayAppointments, stats } = dashboardData;
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Welcome, {user?.name}</h1>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+            <FaTooth className="mr-2 text-indigo-600" /> 
+            DentalOS.AI Receptionist Portal
+          </h1>
+          <p className="text-gray-500">Welcome, {user?.name} | {clinic?.name}</p>
+        </div>
+        <div className="flex space-x-2">
+          <Button
+            variant="primary"
+            onClick={() => handleQuickAction('newAppointment')}
+          >
+            <FaCalendarAlt className="mr-2" /> New Appointment
+          </Button>
+        </div>
       </div>
 
-      {error && (
-        <Alert 
-          variant="error" 
-          title="Error" 
-          message={error}
-          onClose={() => setError(null)}
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          title="Today's Appointments"
+          value={stats.totalAppointments}
+          icon={<FaCalendarCheck />}
+          color="primary"
+          onClick={() => navigate('/receptionist/appointments')}
         />
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Today's Appointments</div>
-            <div className="mt-1 text-3xl font-semibold text-indigo-600">{stats.totalAppointments}</div>
-          </div>
-        </Card>
+        <KpiCard
+          title="Confirmed Appointments"
+          value={stats.confirmedAppointments}
+          icon={<FaCalendarAlt />}
+          color="success"
+          onClick={() => navigate('/receptionist/appointments?status=Confirmed')}
+        />
 
-        <Card>
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Confirmed</div>
-            <div className="mt-1 text-3xl font-semibold text-green-600">{stats.confirmedAppointments}</div>
-          </div>
-        </Card>
+        <KpiCard
+          title="Pending Payments"
+          value={stats.pendingPayments}
+          icon={<FaFileInvoiceDollar />}
+          color="warning"
+          onClick={() => navigate('/receptionist/billing')}
+        />
 
-        <Card>
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Pending Payments</div>
-            <div className="mt-1 text-3xl font-semibold text-yellow-600">{stats.pendingPayments}</div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Today's Revenue</div>
-            <div className="mt-1 text-3xl font-semibold text-gray-900">₹{stats.todayRevenue.toFixed(2)}</div>
-          </div>
-        </Card>
+        <KpiCard
+          title="Today's Revenue"
+          value={stats.todayRevenue.toLocaleString()}
+          unit="₹"
+          icon={<FaFileInvoiceDollar />}
+          color="info"
+          onClick={() => navigate('/receptionist/billing')}
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartCard title="Appointments by Status">
+          <PieChart data={getAppointmentsByStatusChartData()} height={250} />
+        </ChartCard>
+
+        <ChartCard title="Weekly Revenue">
+          <LineChart data={getRevenueByDayChartData()} height={250} />
+        </ChartCard>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Quick Actions */}
-        <Card title="Quick Actions">
+        <Card title="Quick Actions" className="h-full">
           <div className="p-4 space-y-4">
             <Button
               onClick={() => handleQuickAction('newAppointment')}
-              className="w-full"
+              className="w-full flex items-center justify-center"
             >
-              New Appointment
+              <FaCalendarAlt className="mr-2" /> New Appointment
             </Button>
             <Button
               onClick={() => handleQuickAction('newPatient')}
               variant="secondary"
-              className="w-full"
+              className="w-full flex items-center justify-center"
             >
-              Register Patient
+              <FaUserPlus className="mr-2" /> Register Patient
             </Button>
             <Button
               onClick={() => handleQuickAction('payments')}
               variant="secondary"
-              className="w-full"
+              className="w-full flex items-center justify-center"
             >
-              Manage Payments
+              <FaFileInvoiceDollar className="mr-2" /> Manage Payments
             </Button>
           </div>
         </Card>
 
         {/* Today's Schedule - Brief View */}
-        <Card title="Today's Schedule" className="md:col-span-2">
+        <Card title="Today's Schedule" className="lg:col-span-2">
           {todayAppointments.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
-              No appointments scheduled for today
+            <div className="p-8 text-center">
+              <FaCalendarAlt className="mx-auto text-4xl text-gray-300 mb-4" />
+              <p className="text-gray-500 mb-4">No appointments scheduled for today</p>
+              <Button 
+                variant="primary"
+                onClick={() => handleQuickAction('newAppointment')}
+              >
+                Schedule Appointment
+              </Button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -173,7 +301,7 @@ const ReceptionistDashboard = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {todayAppointments.slice(0, 5).map((appointment) => (
-                    <tr key={appointment._id}>
+                    <tr key={appointment._id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/receptionist/appointments/${appointment._id}`)}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(appointment.startTime).toLocaleTimeString([], { 
                           hour: '2-digit', 
@@ -217,6 +345,24 @@ const ReceptionistDashboard = () => {
           )}
         </Card>
       </div>
+
+      {/* Appointments by Doctor */}
+      {dashboardData.stats?.appointmentsByDoctor?.length > 0 && (
+        <ChartCard 
+          title="Appointments by Doctor" 
+          actions={
+            <Button 
+              size="sm" 
+              variant="secondary"
+              onClick={() => navigate('/receptionist/appointments')}
+            >
+              View All
+            </Button>
+          }
+        >
+          <BarChart data={getAppointmentsByDoctorChartData()} height={250} />
+        </ChartCard>
+      )}
     </div>
   );
 };

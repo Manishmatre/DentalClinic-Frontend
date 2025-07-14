@@ -1,107 +1,126 @@
 import client from '../client';
 
-const STAFF_URL = '/staff';
-
-const staffService = {
-  // Get all staff members with optional filtering
-  getStaff: async (params = {}) => {
-    try {
-      console.log('Fetching staff with params:', params);
-      console.log('Staff URL:', STAFF_URL);
-      
-      // Add a cache-busting parameter
-      const requestParams = {
-        ...params,
-        _t: new Date().getTime() // Add timestamp to prevent caching
-      };
-      
-      const response = await client.get(STAFF_URL, { params: requestParams });
-      console.log('Staff API raw response:', response);
-      
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching staff:', error);
-      console.error('Error details:', error.response?.data || error.message);
-      throw error;
-    }
-  },
-  
-  // Get a single staff member by ID
-  getStaffById: async (id) => {
-    try {
-      const response = await client.get(`${STAFF_URL}/${id}`);
-      return response.data;
-    } catch (error) {
-      console.error(`Error fetching staff with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Create a new staff member
-  createStaff: async (staffData) => {
-    try {
-      const response = await client.post(STAFF_URL, staffData);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating staff member:', error);
-      throw error;
-    }
-  },
-  
-  // Update an existing staff member
-  updateStaff: async (id, staffData) => {
-    try {
-      const response = await client.put(`${STAFF_URL}/${id}`, staffData);
-      return response.data;
-    } catch (error) {
-      console.error(`Error updating staff with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Delete a staff member
-  deleteStaff: async (id) => {
-    try {
-      const response = await client.delete(`${STAFF_URL}/${id}`);
-      return response.data;
-    } catch (error) {
-      console.error(`Error deleting staff with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Update staff status (active/inactive/on leave)
-  updateStaffStatus: async (id, status) => {
-    try {
-      const response = await client.patch(`${STAFF_URL}/${id}/status`, { status });
-      return response.data;
-    } catch (error) {
-      console.error(`Error updating status for staff with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Reset staff password
-  resetPassword: async (id) => {
-    try {
-      const response = await client.post(`${STAFF_URL}/${id}/reset-password`, {});
-      return response.data;
-    } catch (error) {
-      console.error(`Error resetting password for staff with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Get staff statistics
-  getStaffStats: async () => {
-    try {
-      const response = await client.get(`${STAFF_URL}/stats`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching staff statistics:', error);
-      throw error;
-    }
+// Get next sequential employee ID
+export const getNextEmployeeId = async () => {
+  try {
+    const response = await client.get('/staff/next-employee-id');
+    return response.data.nextEmployeeId;
+  } catch (error) {
+    console.error('Error generating next employee ID:', error);
+    // Fallback to a timestamp-based ID
+    const timestamp = new Date().getTime().toString().slice(-3);
+    return `EMP${timestamp}`;
   }
 };
 
-export default staffService;
+// Fetch staff list with query parameters
+export const getStaff = async (params) => {
+  try {
+    const response = await client.get('/staff', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching staff:', error);
+    throw error;
+  }
+};
+
+// Fetch staff analytics data
+export const getStaffAnalytics = async () => {
+  try {
+    const response = await client.get('/staff/stats');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching staff analytics:', error);
+    throw error;
+  }
+};
+
+// Get staff by ID
+export const getStaffById = async (id) => {
+  try {
+    const response = await client.get(`/staff/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching staff details:', error);
+    throw error;
+  }
+};
+
+// Create new staff member
+export const createStaff = async (data) => {
+  try {
+    const response = await client.post('/staff', data);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating staff:', error);
+    throw error;
+  }
+};
+
+// Update staff member
+export const updateStaff = async (id, data) => {
+  try {
+    const response = await client.put(`/staff/${id}`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating staff:', error);
+    throw error;
+  }
+};
+
+// Delete staff member
+export const deleteStaff = async (id) => {
+  try {
+    const response = await client.delete(`/staff/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting staff:', error);
+    throw error;
+  }
+};
+
+// Get staff requests
+export const getStaffRequests = async (params) => {
+  try {
+    const response = await client.get('/staff-requests', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching staff requests:', error);
+    throw error;
+  }
+};
+
+// Process staff request
+export const processStaffRequest = async (id, data) => {
+  try {
+    const response = await client.put(`/staff-requests/${id}`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error processing staff request:', error);
+    throw error;
+  }
+};
+
+// Update staff status
+export const updateStaffStatus = async (id, status) => {
+  try {
+    const response = await client.patch(`/staff/${id}/status`, { status });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating staff status:', error);
+    throw error;
+  }
+};
+
+export default {
+  getStaff,
+  getStaffById,
+  getStaffAnalytics,
+  createStaff,
+  updateStaff,
+  deleteStaff,
+  getStaffRequests,
+  processStaffRequest,
+  updateStaffStatus,
+  getNextEmployeeId // Add the new function to the default export
+};

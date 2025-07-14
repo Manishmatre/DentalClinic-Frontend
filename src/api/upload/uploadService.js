@@ -1,5 +1,28 @@
-import client from '../axios';
+import axios from 'axios';
 import { toast } from 'react-toastify';
+import { API_URL } from '../../config';
+import { getAuthHeaders } from '../../utils/authUtils';
+
+// Create axios instance for uploads
+const client = axios.create({
+  baseURL: API_URL
+  // Do NOT set 'Content-Type' here! Let axios/browser handle it for FormData.
+});
+
+// Add request interceptor to include auth headers
+client.interceptors.request.use(
+  (config) => {
+    const authHeaders = getAuthHeaders();
+    config.headers = {
+      ...config.headers,
+      ...authHeaders
+    };
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // Default cloud name from environment or hardcoded for development
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'deekt4ncx';
@@ -16,62 +39,74 @@ const handleError = (error, customMessage) => {
 };
 
 const uploadService = {
-  // Upload a single file
-  async uploadFile(file, type = 'image', onProgress = null, metadata = {}) {
+  // Upload a profile image specifically for staff profiles
+  async uploadProfileImage(formData, onProgress = null) {
     try {
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      // Add metadata if provided
-      if (metadata) {
-        // Convert metadata object to JSON string and append
-        formData.append('metadata', JSON.stringify(metadata));
-      }
-      
-      // Add folder based on type if not specified in metadata
-      if (!metadata.folder) {
-        let folder = 'general';
-        switch (type) {
-          case 'medical-record':
-            folder = 'medical_records';
-            break;
-          case 'bill':
-            folder = 'billing';
-            break;
-          case 'profile-picture':
-            folder = 'profiles';
-            break;
-          case 'document':
-            folder = 'documents';
-            break;
-          // Add more cases as needed
-        }
-        formData.append('folder', folder);
-      }
-
       // Configuration for tracking upload progress
       const config = {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress?.(percentCompleted);
         }
       };
 
-      // Add progress tracking if provided
-      if (onProgress) {
-        config.onUploadProgress = (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          onProgress(percentCompleted);
-        };
-      }
+      // Log the form data contents for debugging
+      console.log('Uploading profile image with form data:', {
+        file: formData.get('file'),
+        metadata: formData.get('metadata')
+      });
 
-      // Make API call
-      const response = await client.post(`/api/upload/${type}`, formData, config);
+      const response = await client.post('/upload/profile', formData, config);
       return response.data;
     } catch (error) {
-      return handleError(error, `Failed to upload ${type} file`);
+      console.error('Upload error:', error.response?.data || error.message);
+      throw new Error('Failed to upload profile image');
     }
   },
+  
+      // Upload a single file
+      async uploadFile(formData, type = 'image', onProgress = null, metadata = {}) {
+        try {
+          // Add metadata if provided
+          if (Object.keys(metadata).length > 0) {
+            formData.append('metadata', JSON.stringify(metadata));
+          }
+
+          // Configuration for tracking upload progress
+          const config = {
+            headers: {
+              // Remove Content-Type to let axios set it correctly for multipart/form-data
+              // 'Content-Type': 'multipart/form-data'
+            },
+            onUploadProgress: (progressEvent) => {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              onProgress?.(percentCompleted);
+            }
+          };
+
+          const endpoint = type === 'profile' ? '/profile-picture' : `/upload/${type}`;
+          const response = await client.post(endpoint, formData, config);
+          
+          // Check for errors in response
+          if (response.data?.error) {
+            throw new Error(response.data.error);
+          }
+          
+          return response.data;
+        } catch (error) {
+          console.error('Upload error:', {
+            error: error,
+            response: error.response?.data,
+            message: error.message
+          });
+          
+          if (error.response?.data?.message) {
+            throw new Error(error.response.data.message);
+          }
+          
+          throw new Error('Failed to upload file: ' + error.message);
+        }
+      },
 
   // Upload multiple files
   async uploadMultipleFiles(files, type = 'images', onProgress = null, metadata = {}) {
@@ -84,19 +119,12 @@ const uploadService = {
 
       // Configuration for tracking upload progress
       const config = {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress?.(percentCompleted);
         }
       };
 
-      // Add progress tracking if provided
-      if (onProgress) {
-        config.onUploadProgress = (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          onProgress(percentCompleted);
-        };
-      }
-      
       // Add metadata if provided
       if (metadata) {
         // Convert metadata object to JSON string and append
@@ -104,7 +132,7 @@ const uploadService = {
       }
 
       // Make API call
-      const response = await client.post(`/api/upload/${type}`, formData, config);
+      const response = await client.post(`/upload/${type}`, formData, config);
       return response.data;
     } catch (error) {
       return handleError(error, 'Failed to upload files');
@@ -121,7 +149,7 @@ const uploadService = {
         metadata
       };
 
-      const response = await client.post('/api/upload/data', data);
+      const response = await client.post('/upload/data', data);
       return response.data;
     } catch (error) {
       return handleError(error, 'Failed to upload image data');
@@ -135,7 +163,7 @@ const uploadService = {
         return { success: false, message: 'No public ID provided' };
       }
       
-      const response = await client.delete(`/api/upload/${publicId}?resourceType=${resourceType}`);
+      const response = await client.delete(`/upload/${publicId}?resourceType=${resourceType}`);
       toast.success('File deleted successfully');
       return response.data;
     } catch (error) {
@@ -149,7 +177,7 @@ const uploadService = {
       // Convert metadata to query string
       const metadataQuery = metadata ? `&metadata=${encodeURIComponent(JSON.stringify(metadata))}` : '';
       
-      const response = await client.get(`/api/upload/signature?folder=${folder}${metadataQuery}`);
+      const response = await client.get(`/upload/signature?folder=${folder}${metadataQuery}`);
       return response.data;
     } catch (error) {
       return handleError(error, 'Failed to get upload signature');
@@ -158,7 +186,91 @@ const uploadService = {
 
   // Upload a profile picture
   async uploadProfilePicture(file, onProgress = null) {
-    return this.uploadFile(file, 'profile-picture', onProgress, { folder: 'profiles' });
+    try {
+      // Make sure we have a valid file
+      if (!file) {
+        throw new Error('No file provided');
+      }
+      
+      // Defensive: check file type
+      if (!(file instanceof File || file instanceof Blob)) {
+        throw new Error('Provided file is not a valid File or Blob object');
+      }
+      
+      // Create FormData and append the file
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Log the file details
+      console.log('File to be uploaded:', {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified,
+        isFile: file instanceof File,
+        isBlob: file instanceof Blob
+      });
+      
+      // Configuration for tracking upload progress
+      const config = {
+        headers: {
+          // Remove Content-Type to let axios set it correctly for multipart/form-data
+          // 'Content-Type': 'multipart/form-data'
+        },
+        withCredentials: true,
+        onUploadProgress: onProgress ? (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          console.log(`Upload progress: ${percentCompleted}%`);
+          onProgress(percentCompleted);
+        } : null
+      };
+
+      console.log('Sending request to /upload/profile-picture');
+      
+      // Log the form data entries
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ', pair[1]);
+      }
+      
+      const response = await client.post('/upload/profile-picture', formData, config);
+      
+      console.log('Upload response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
+      
+      // Check for errors in response
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+      
+      if (response.data && typeof response.data === 'object') {
+        // Extract the file data from the response
+        const fileData = response.data.file || response.data;
+        
+        // Return the file data in the expected format
+        return {
+          url: fileData.url || fileData.secure_url,
+          public_id: fileData.public_id,
+          ...fileData
+        };
+      }
+      
+      throw new Error('Invalid response format from server');
+    } catch (error) {
+      console.error('Profile picture upload error:', {
+        error: error,
+        response: error.response?.data,
+        message: error.message
+      });
+      
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      
+      throw new Error('Failed to upload profile picture: ' + error.message);
+    }
   },
 
   // Upload a medical record

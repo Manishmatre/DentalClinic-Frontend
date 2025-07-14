@@ -44,43 +44,75 @@ const RoleManagement = () => {
 
   // Fetch roles and permissions
   const fetchRolesAndPermissions = useCallback(async () => {
-    if (!clinic?._id) return;
+    setIsLoading(true);
+    setError(null);
 
-    try {
-      setIsLoading(true);
-      setError(null);
+    // Default roles data that will be used as fallback
+    const defaultRoles = [
+      { id: '1', name: 'Admin', description: 'Full access to all system features', permissions: ['all'] },
+      { id: '2', name: 'Doctor', description: 'Access to patient records and appointments', permissions: ['view_patients', 'edit_patients', 'view_appointments', 'schedule_appointments'] },
+      { id: '3', name: 'Receptionist', description: 'Manage appointments and patient registration', permissions: ['view_patients', 'add_patients', 'view_appointments', 'schedule_appointments', 'cancel_appointments'] },
+      { id: '4', name: 'Patient', description: 'Limited access to own records', permissions: ['view_own_records', 'book_appointments'] }
+    ];
 
-      const [rolesData, permissionsData] = await Promise.all([
-        roleService.getRoles(clinic._id),
-        roleService.getPermissions()
-      ]);
-
-      setRoles(rolesData);
-      setPermissions(permissionsData);
-    } catch (err) {
-      console.error('Error fetching roles and permissions:', err);
-      setError(err.response?.data?.message || 'Failed to load roles and permissions');
-
-      // Fallback to default roles if API fails
-      setRoles([
-        { id: '1', name: 'Admin', permissions: ['all'] },
-        { id: '2', name: 'Doctor', permissions: ['view_patients', 'manage_appointments', 'manage_treatments'] },
-        { id: '3', name: 'Receptionist', permissions: ['manage_appointments', 'register_patients', 'manage_billing'] },
-        { id: '4', name: 'Patient', permissions: ['view_own_records', 'book_appointments'] }
-      ]);
-
-      // Generate default permissions list
-      const defaultPermissions = [];
-      Object.entries(permissionCategories).forEach(([category, perms]) => {
-        perms.forEach(perm => {
-          defaultPermissions.push({
-            id: perm,
-            name: perm.replace(/_/g, ' '),
-            category
-          });
+    // Generate default permissions list
+    const defaultPermissions = [];
+    Object.entries(permissionCategories).forEach(([category, perms]) => {
+      perms.forEach(perm => {
+        defaultPermissions.push({
+          id: perm,
+          name: perm.replace(/_/g, ' '),
+          category
         });
       });
+    });
+
+    try {
+      // Only try to fetch from API if we have a clinic ID
+      if (clinic?._id) {
+        try {
+          const [rolesData, permissionsData] = await Promise.all([
+            roleService.getRoles(clinic._id),
+            roleService.getPermissions()
+          ]);
+
+          // Only use API data if it's valid (non-empty array)
+          if (Array.isArray(rolesData) && rolesData.length > 0) {
+            setRoles(rolesData);
+          } else {
+            console.log('API returned empty roles data, using default roles');
+            setRoles(defaultRoles);
+          }
+
+          // Only use API data if it's valid (non-empty array)
+          if (Array.isArray(permissionsData) && permissionsData.length > 0) {
+            setPermissions(permissionsData);
+          } else {
+            console.log('API returned empty permissions data, using default permissions');
+            setPermissions(defaultPermissions);
+          }
+        } catch (apiErr) {
+          console.error('Error fetching roles and permissions from API:', apiErr);
+          
+          // If API call fails, use fallback data
+          setRoles(defaultRoles);
+          setPermissions(defaultPermissions);
+          
+          // Set a user-friendly error message
+          setError('Using demo data. You may not have permission to manage roles.');
+        }
+      } else {
+        // No clinic ID, use default data
+        console.log('No clinic ID available, using default roles and permissions');
+        setRoles(defaultRoles);
+        setPermissions(defaultPermissions);
+      }
+    } catch (err) {
+      console.error('Unexpected error in fetchRolesAndPermissions:', err);
+      // Ensure we still have data even if there's an error
+      setRoles(defaultRoles);
       setPermissions(defaultPermissions);
+      setError('An unexpected error occurred. Using demo data instead.');
     } finally {
       setIsLoading(false);
     }
@@ -315,6 +347,7 @@ const RoleManagement = () => {
     ));
   };
 
+  // Show loading spinner only during initial load
   if (isLoading && roles.length === 0) {
     return (
       <div className="flex justify-center p-8">

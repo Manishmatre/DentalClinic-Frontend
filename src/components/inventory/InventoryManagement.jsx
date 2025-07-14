@@ -1,509 +1,326 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import inventoryService from '../../api/inventory/inventoryService';
-import InventoryItemForm from './InventoryItemForm';
-import InventoryDetail from './InventoryDetail';
-import InventoryTransactionForm from './InventoryTransactions';
-import Modal from '../ui/Modal';
+import Tabs from '../ui/Tabs';
+import InventoryStats from './InventoryStats';
+import InventoryList from './InventoryList';
+import StockAlerts from './StockAlerts';
+import TransactionHistory from './TransactionHistory';
+import inventoryService from '../../services/inventoryService';
 import Button from '../ui/Button';
-import Alert from '../ui/Alert';
-import { FaPlus, FaSearch, FaFilter, FaExclamationTriangle } from 'react-icons/fa';
+import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import BarChart from '../dashboard/BarChart';
+import PieChart from '../dashboard/PieChart';
+import ChartCard from '../dashboard/ChartCard';
+import { FaBox, FaExclamationTriangle, FaCalendarAlt, FaDollarSign, FaTruck, FaHistory, FaFileExport, FaBell, FaPlus, FaTags, FaChartBar, FaExchangeAlt } from 'react-icons/fa';
+import KpiCard from '../dashboard/KpiCard';
+import Card from '../ui/Card';
+import LineChart from '../dashboard/LineChart';
+import Categories from './Categories';
+import UsageAnalytics from './UsageAnalytics';
+import Suppliers from './Suppliers';
+
+const TAB_DASHBOARD = 'dashboard';
+const TAB_ITEMS = 'items';
+const TAB_CATEGORIES = 'categories';
+const TAB_ALERTS = 'alerts';
+const TAB_TRANSACTIONS = 'transactions';
+const TAB_SUPPLIERS = 'suppliers';
+const TAB_USAGE = 'usage';
+const TAB_REPORTS = 'reports';
+
+const tabList = [
+  { id: TAB_DASHBOARD, label: 'Dashboard', icon: <FaBox /> },
+  { id: TAB_ITEMS, label: 'Items', icon: <FaBox /> },
+  { id: TAB_CATEGORIES, label: 'Categories', icon: <FaTags /> },
+  { id: TAB_ALERTS, label: 'Stock Alerts', icon: <FaExclamationTriangle /> },
+  { id: TAB_TRANSACTIONS, label: 'Transactions', icon: <FaExchangeAlt /> },
+  { id: TAB_SUPPLIERS, label: 'Suppliers', icon: <FaTruck /> },
+  { id: TAB_USAGE, label: 'Usage Analytics', icon: <FaChartBar /> },
+  { id: TAB_REPORTS, label: 'Reports', icon: <FaFileExport /> },
+];
 
 const InventoryManagement = () => {
-  const { user, clinic } = useAuth();
-  const [inventoryItems, setInventoryItems] = useState([]);
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState(TAB_DASHBOARD);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isItemFormModalOpen, setIsItemFormModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [stockFilter, setStockFilter] = useState('');
+  const [lowStockItems, setLowStockItems] = useState([]);
+  const [expiringItems, setExpiringItems] = useState([]);
   const [stats, setStats] = useState(null);
+  const [transactions, setTransactions] = useState([]);
 
-  // Fetch inventory items
-  const fetchInventoryItems = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const params = {};
-      if (searchTerm) params.search = searchTerm;
-      if (categoryFilter) params.category = categoryFilter;
-      if (stockFilter === 'lowStock') params.lowStock = true;
-      if (stockFilter === 'active') params.status = 'active';
-      if (stockFilter === 'inactive') params.status = 'inactive';
+  const { auth } = useAuth();
+  const clinicId = auth?.clinic?._id || auth?.clinicId || auth?.user?.clinicId || null;
+  const navigate = useNavigate();
 
-      const data = await inventoryService.getInventoryItems(params);
-      setInventoryItems(data);
-    } catch (err) {
-      console.error('Error fetching inventory items:', err);
-      setError(err.response?.data?.message || 'Failed to load inventory items');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Fetch inventory statistics
-  const fetchInventoryStats = async () => {
-    try {
-      const data = await inventoryService.getInventoryStats();
-      setStats(data);
-    } catch (err) {
-      console.error('Error fetching inventory stats:', err);
-      // Don't set error state here to avoid blocking the main functionality
-    }
-  };
-
-  // Initial data load
   useEffect(() => {
-    fetchInventoryItems();
-    fetchInventoryStats();
-  }, []);
+    fetchAllData();
+    // eslint-disable-next-line
+  }, [clinicId]);
 
-  // Refetch when filters change
-  useEffect(() => {
-    fetchInventoryItems();
-  }, [searchTerm, categoryFilter, stockFilter]);
-
-  // Handle creating or updating an inventory item
-  const handleSubmitItem = async (itemData) => {
-    setIsLoading(true);
+  const fetchAllData = async () => {
+    setLoading(true);
     setError(null);
     try {
-      if (selectedItem) {
-        // Update existing item
-        await inventoryService.updateInventoryItem(selectedItem._id, itemData);
-        setSuccessMessage('Inventory item updated successfully');
-      } else {
-        // Create new item
-        await inventoryService.createInventoryItem(itemData);
-        setSuccessMessage('Inventory item created successfully');
-      }
-      // Refresh the list and stats
-      fetchInventoryItems();
-      fetchInventoryStats();
-      // Close the modal
-      setIsItemFormModalOpen(false);
-      setSelectedItem(null);
+      const [itemsData, statsData, transactionsData] = await Promise.all([
+        inventoryService.getInventoryItems(clinicId ? { clinicId } : {}),
+        inventoryService.getInventoryStats(clinicId ? { clinicId } : {}),
+        inventoryService.getInventoryTransactions(clinicId ? { clinicId } : {}),
+      ]);
+      setItems(itemsData || []);
+      setStats(statsData || {});
+      setTransactions(transactionsData || []);
+      setLowStockItems((itemsData || []).filter(item => item.quantity <= item.minimumStock));
+      setExpiringItems((itemsData || []).filter(item => {
+        if (!item.expiryDate) return false;
+        const expiryDate = new Date(item.expiryDate);
+        const today = new Date();
+        const daysRemaining = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        return daysRemaining <= 30;
+      }));
     } catch (err) {
-      console.error('Error saving inventory item:', err);
-      setError(err.response?.data?.message || 'Failed to save inventory item');
+      setError('Failed to load inventory data');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // Handle creating an inventory transaction
-  const handleSubmitTransaction = async (transactionData) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await inventoryService.createInventoryTransaction(transactionData);
-      setSuccessMessage('Transaction recorded successfully');
-      // Refresh the list and stats
-      fetchInventoryItems();
-      fetchInventoryStats();
-      // Close the modal
-      setIsTransactionModalOpen(false);
-    } catch (err) {
-      console.error('Error recording transaction:', err);
-      setError(err.response?.data?.message || 'Failed to record transaction');
-    } finally {
-      setIsLoading(false);
-    }
+  // Helper: Top suppliers
+  const topSuppliers = Array.from(new Set(items.map(i => i.supplier?.name).filter(Boolean)))
+    .map(name => ({
+      name,
+      count: items.filter(i => i.supplier?.name === name).length
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+
+  // Helper: Recent inventory transactions (show last 5)
+  const recentTransactions = transactions.slice(0, 5);
+
+  // Helper: Value over time (mocked for now)
+  const valueOverTime = {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    datasets: [{
+      label: 'Inventory Value',
+      data: [120000, 130000, 125000, 140000, 135000, 150000],
+      borderColor: '#4f46e5',
+      backgroundColor: 'rgba(79, 70, 229, 0.1)',
+      fill: true,
+      tension: 0.4
+    }]
   };
 
-  // Handle deleting an inventory item
-  const handleDeleteItem = async () => {
-    if (!itemToDelete) return;
-    
-    setIsLoading(true);
-    setError(null);
-    try {
-      await inventoryService.deleteInventoryItem(itemToDelete);
-      setSuccessMessage('Inventory item deleted successfully');
-      // Refresh the list and stats
-      fetchInventoryItems();
-      fetchInventoryStats();
-      // Close the modal
-      setIsDeleteModalOpen(false);
-      setItemToDelete(null);
-    } catch (err) {
-      console.error('Error deleting inventory item:', err);
-      setError(err.response?.data?.message || 'Failed to delete inventory item');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle viewing an item
-  const handleViewItem = (item) => {
-    setSelectedItem(item);
-    setIsDetailModalOpen(true);
-  };
-
-  // Handle editing an item
-  const handleEditItem = (item) => {
-    setSelectedItem(item);
-    setIsItemFormModalOpen(true);
-  };
-
-  // Handle confirming item deletion
-  const handleConfirmDelete = (itemId) => {
-    setItemToDelete(itemId);
-    setIsDeleteModalOpen(true);
-  };
-
-  // Handle adding a transaction
-  const handleAddTransaction = (item) => {
-    setSelectedItem(item);
-    setIsTransactionModalOpen(true);
-  };
-
-  // Clear success message after 3 seconds
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => {
-        setSuccessMessage('');
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage]);
-
-  // Get status badge color
-  const getStatusBadgeColor = (item) => {
-    return inventoryService.getStockStatusColor(item.stockStatus);
-  };
+  if (loading) {
+  return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      {/* Header with stats */}
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-800">Inventory Management</h1>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setSelectedItem(null);
-              setIsItemFormModalOpen(true);
-            }}
-          >
-            <FaPlus className="mr-2" /> Add New Item
-          </Button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+            <FaBox className="mr-2 text-indigo-600" />
+            Inventory Management
+          </h1>
+          <p className="text-gray-500">Manage all inventory, suppliers, and stock for your clinic</p>
         </div>
-
-        {stats && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-indigo-500 p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <h2 className="text-lg font-medium text-gray-900">Total Items</h2>
-                  <p className="text-2xl font-semibold text-gray-700">{stats.totalItems}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-yellow-500 p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <h2 className="text-lg font-medium text-gray-900">Low Stock</h2>
-                  <p className="text-2xl font-semibold text-gray-700">{stats.lowStockItems}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-red-500 p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <h2 className="text-lg font-medium text-gray-900">Out of Stock</h2>
-                  <p className="text-2xl font-semibold text-gray-700">{stats.outOfStockItems}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-green-500 p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <h2 className="text-lg font-medium text-gray-900">Total Value</h2>
-                  <p className="text-2xl font-semibold text-gray-700">{inventoryService.formatCurrency(stats.totalValue)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <Button
+          variant="primary"
+          className="flex items-center px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded shadow"
+          onClick={() => navigate('/admin/inventory/add')}
+        >
+          <FaPlus className="mr-2" /> Add Item
+        </Button>
       </div>
-
-      {successMessage && (
-        <Alert
-          variant="success"
-          title="Success"
-          message={successMessage}
-          className="mb-4"
-        />
-      )}
-
-      {error && (
-        <Alert
-          variant="error"
-          title="Error"
-          message={error}
-          className="mb-4"
-        />
-      )}
-
-      {/* Filters and Search */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
-          <div className="flex items-center space-x-2">
-            <FaFilter className="text-gray-400" />
-            <span className="text-sm font-medium text-gray-700">Filters:</span>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {tabList.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center transition-colors duration-200
+                ${activeTab === tab.id
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
             >
-              <option value="">All Categories</option>
-              <option value="Medication">Medication</option>
-              <option value="Medical Supply">Medical Supply</option>
-              <option value="Equipment">Equipment</option>
-              <option value="Office Supply">Office Supply</option>
-              <option value="Other">Other</option>
-            </select>
-            <select
-              value={stockFilter}
-              onChange={(e) => setStockFilter(e.target.value)}
-              className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            >
-              <option value="">All Stock</option>
-              <option value="lowStock">Low Stock</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FaSearch className="text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search inventory..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm w-full md:w-64"
-            />
-          </div>
+              {tab.icon}
+              <span className="ml-2">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+      {/* KPI Cards */}
+      {activeTab === TAB_DASHBOARD && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <KpiCard
+            title="Total Items"
+            value={items.length}
+            icon={<FaBox />}
+            color="primary"
+          />
+          <KpiCard
+            title="Low Stock Items"
+            value={lowStockItems.length}
+            icon={<FaExclamationTriangle />}
+            color="warning"
+          />
+          <KpiCard
+            title="Expiring Soon"
+            value={expiringItems.length}
+            icon={<FaCalendarAlt />}
+            color="danger"
+          />
+          <KpiCard
+            title="Total Inventory Value"
+            value={items.reduce((sum, item) => sum + ((item.price || item.unitCost || 0) * (item.quantity || item.currentQuantity || 0)), 0).toLocaleString()}
+            unit="₹"
+            icon={<FaDollarSign />}
+            color="success"
+          />
         </div>
-      </div>
-
-      {/* Inventory Items Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {isLoading ? (
-          <div className="p-4 text-center">Loading inventory items...</div>
-        ) : inventoryItems.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">
-            {searchTerm || categoryFilter || stockFilter ? 'No items match your filters.' : 'No inventory items found. Add your first item!'}
-          </div>
-        ) : (
+      )}
+      {/* Charts Section */}
+      {activeTab === TAB_DASHBOARD && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <ChartCard title="Inventory Value Over Time">
+            <LineChart data={{
+              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+              datasets: [{
+                label: 'Inventory Value',
+                data: [120000, 130000, 125000, 140000, 135000, 150000],
+                borderColor: '#4f46e5',
+                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                fill: true,
+                tension: 0.4
+              }]
+            }} />
+          </ChartCard>
+          <ChartCard title="Category Distribution">
+            <PieChart data={{
+              labels: Array.from(new Set(items.map(i => i.category).filter(Boolean))),
+              datasets: [{
+                label: 'Items',
+                data: Array.from(new Set(items.map(i => i.category).filter(Boolean))).map(
+                  cat => items.filter(i => i.category === cat).length
+                ),
+                backgroundColor: [
+                  '#3b82f6', '#f59e42', '#10b981', '#ef4444', '#6366f1', '#fbbf24', '#a78bfa', '#f472b6',
+                ],
+              }],
+            }} />
+          </ChartCard>
+          <ChartCard title="Top 5 Items by Value">
+            <LineChart data={{
+              labels: items
+                .sort((a, b) => ((b.price || b.unitCost || 0) * (b.quantity || b.currentQuantity || 0)) - ((a.price || a.unitCost || 0) * (a.quantity || a.currentQuantity || 0)))
+                .slice(0, 5)
+                .map(i => i.name),
+              datasets: [{
+                label: 'Value',
+                data: items
+                  .sort((a, b) => ((b.price || b.unitCost || 0) * (b.quantity || b.currentQuantity || 0)) - ((a.price || a.unitCost || 0) * (a.quantity || a.currentQuantity || 0)))
+                  .slice(0, 5)
+                  .map(i => (i.price || i.unitCost || 0) * (i.quantity || i.currentQuantity || 0)),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.4
+              }]
+            }} />
+          </ChartCard>
+        </div>
+      )}
+      {/* Recent Inventory Changes Table */}
+      {activeTab === TAB_DASHBOARD && (
+        <Card title="Recent Inventory Changes">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                  <th scope="col" className="relative px-6 py-3">
-                    <span className="sr-only">Actions</span>
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">By</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {inventoryItems.map((item) => (
-                  <tr key={item._id} className={!item.isActive ? 'bg-gray-50' : ''}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                          <div className="text-sm text-gray-500">{item.itemCode || 'No code'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{item.category}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{item.currentQuantity} {item.unitOfMeasure}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeColor(item)}`}>
-                        {item.stockStatus}
-                      </span>
-                      {!item.isActive && (
-                        <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                          Inactive
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {inventoryService.formatCurrency(item.totalValue)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        onClick={() => handleViewItem(item)}
-                      >
-                        View
-                      </Button>
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        onClick={() => handleEditItem(item)}
-                      >
-                        Edit
-                      </Button>
-                      <Button 
-                        variant="primary" 
-                        size="sm" 
-                        onClick={() => handleAddTransaction(item)}
-                      >
-                        Transaction
-                      </Button>
-                      {item.isActive && (
-                        <Button 
-                          variant="danger" 
-                          size="sm" 
-                          onClick={() => handleConfirmDelete(item._id)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </td>
+                {transactions.slice(0, 5).length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-gray-500">No recent inventory changes.</td>
+                  </tr>
+                )}
+                {transactions.slice(0, 5).map(tx => (
+                  <tr key={tx._id}>
+                    <td className="px-6 py-4 whitespace-nowrap">{tx.itemName || tx.itemId?.name || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{tx.transactionType}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{tx.quantity}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{tx.performedBy || 'N/A'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {/* Low Stock Warning */}
-      {stats && stats.lowStockItems > 0 && (
-        <div className="mt-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <FaExclamationTriangle className="h-5 w-5 text-yellow-400" />
+        </Card>
+      )}
+      {/* Quick Actions */}
+      {activeTab === TAB_DASHBOARD && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          <Card>
+            <div className="flex flex-col items-center p-6">
+              <FaPlus className="text-3xl text-indigo-600 mb-2" />
+              <h3 className="font-semibold text-lg mb-1">Add Inventory Item</h3>
+              <p className="text-gray-500 mb-4 text-center">Add a new item to your inventory.</p>
+              <button className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700" onClick={() => navigate('/admin/inventory/add')}>Add Item</button>
             </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                <strong>Low Stock Alert:</strong> {stats.lowStockItems} items are below their reorder level. 
-                <button 
-                  onClick={() => setStockFilter('lowStock')} 
-                  className="font-medium underline text-yellow-700 hover:text-yellow-600"
-                >
-                  View low stock items
-                </button>
-              </p>
+          </Card>
+          <Card>
+            <div className="flex flex-col items-center p-6">
+              <FaTruck className="text-3xl text-green-600 mb-2" />
+              <h3 className="font-semibold text-lg mb-1">Order Supplies</h3>
+              <p className="text-gray-500 mb-4 text-center">Order new supplies from your top suppliers.</p>
+              <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700" onClick={() => navigate('/admin/suppliers')}>Order Supplies</button>
             </div>
-          </div>
+          </Card>
+          <Card>
+            <div className="flex flex-col items-center p-6">
+              <FaFileExport className="text-3xl text-yellow-600 mb-2" />
+              <h3 className="font-semibold text-lg mb-1">Export Inventory</h3>
+              <p className="text-gray-500 mb-4 text-center">Export your inventory data to CSV or Excel.</p>
+              <button className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" onClick={() => exportToCSV(items)}>Export</button>
+            </div>
+          </Card>
         </div>
       )}
-
-      {/* Item Form Modal */}
-      <Modal
-        isOpen={isItemFormModalOpen}
-        onClose={() => setIsItemFormModalOpen(false)}
-        title={selectedItem ? 'Edit Inventory Item' : 'Add New Inventory Item'}
-        size="lg"
-      >
-        <InventoryItemForm
-          onSubmit={handleSubmitItem}
-          initialData={selectedItem}
-          isLoading={isLoading}
-          error={error}
-        />
-      </Modal>
-
-      {/* Item Detail Modal */}
-      <Modal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        title="Inventory Item Details"
-        size="lg"
-      >
-        <InventoryDetail
-          item={selectedItem}
-          onEdit={handleEditItem}
-          onDelete={handleConfirmDelete}
-          onAddTransaction={handleAddTransaction}
-          onBack={() => setIsDetailModalOpen(false)}
-        />
-      </Modal>
-
-      {/* Transaction Modal */}
-      <Modal
-        isOpen={isTransactionModalOpen}
-        onClose={() => setIsTransactionModalOpen(false)}
-        title="Record Inventory Transaction"
-        size="lg"
-      >
-        <InventoryTransactionForm
-          onSubmit={handleSubmitTransaction}
-          item={selectedItem}
-          isLoading={isLoading}
-          error={error}
-        />
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        title="Confirm Deletion"
-        size="sm"
-      >
-        <div className="p-4">
-          <p className="mb-4">Are you sure you want to delete this inventory item? This action cannot be undone.</p>
-          <div className="flex justify-end space-x-3">
-            <Button
-              variant="secondary"
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={handleDeleteItem}
-              loading={isLoading}
-            >
-              Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Tab Content */}
+      {activeTab === TAB_ITEMS && (
+        <InventoryList items={items} categories={[]} onUpdateStock={fetchAllData} onRefresh={fetchAllData} />
+      )}
+      {activeTab === TAB_CATEGORIES && (
+        <Categories />
+      )}
+      {activeTab === TAB_ALERTS && (
+        <StockAlerts lowStockItems={lowStockItems} expiringItems={expiringItems} />
+      )}
+      {activeTab === TAB_TRANSACTIONS && (
+        <TransactionHistory transactions={transactions} />
+      )}
+      {activeTab === TAB_SUPPLIERS && (
+        <Suppliers />
+      )}
+      {activeTab === TAB_USAGE && (
+        <UsageAnalytics />
+      )}
+      {activeTab === TAB_REPORTS && (
+        <div className="text-center py-12 text-lg text-gray-500">Inventory reports coming soon...</div>
+      )}
     </div>
   );
 };

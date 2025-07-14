@@ -116,6 +116,29 @@ const serviceService = {
     } catch (error) {
       return handleApiError(error, 'updateServicePopularity');
     }
+  },
+
+  // Async search for services by name
+  async searchServices(query, clinicId) {
+    try {
+      const params = { search: query, clinicId, limit: 10 };
+      const response = await axios.get(`${BASE_URL}/search`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error searching services:', error);
+      return { data: [] };
+    }
+  },
+
+  // Seed default services for the current clinic (admin only)
+  async seedDefaultServices() {
+    try {
+      const response = await axios.post(`${BASE_URL}/seed`);
+      return response.data;
+    } catch (error) {
+      console.error('Error seeding default services:', error);
+      throw error;
+    }
   }
 };
 

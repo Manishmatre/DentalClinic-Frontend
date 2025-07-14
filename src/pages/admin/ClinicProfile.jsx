@@ -30,51 +30,32 @@ const ClinicProfile = () => {
     logo: ''
   });
 
-  // Function to create a default clinic if none exists or activate an inactive one
-  const createOrActivateClinic = async () => {
+  // Function to activate a clinic if it exists and is inactive
+  const createOrActivateClinic = async (clinicData) => {
     try {
       setIsLoading(true);
       setError(null);
       
-      console.log('Creating or activating clinic for user:', user.name);
-      
-      // Default clinic data
-      const defaultClinicData = {
-        name: 'My Health Clinic',
-        email: user.email,
-        contact: user.phone || '1234567890',
-        clinicContact: user.phone || '1234567890',
-        doctorName: user.name,
-        address1: '123 Health Street',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        country: 'India',
-        zipcode: '400001',
-        status: 'active',
-        subscription: {
-          status: 'active'
-        }
-      };
-      
-      // Try to update the clinic to active status
-      const response = await clinicService.updateClinicSettings(user.clinicId, {
-        ...defaultClinicData,
-        status: 'active'
-      });
-      
-      console.log('Clinic activation response:', response);
-      
-      // Refresh auth to get updated clinic status
-      await refreshAuth();
-      // Do NOT call fetchClinicData here to avoid infinite loop
-      // return await fetchClinicData();
-      return response;
+      if (!clinicData) {
+        // No clinic exists, do not create with mock data
+        setError('No clinic found for this user. Please contact support or register your clinic.');
+        return null;
+      } else if (clinicData.status !== 'active') {
+        // Clinic exists but is not active, only update status
+        console.log('Clinic exists but is not active. Activating clinic:', clinicData.name);
+        const response = await clinicService.updateClinicSettings(user.clinicId, { status: 'active' });
+        await refreshAuth();
+        return response;
+      } else {
+        // Clinic exists and is active, do nothing
+        return null;
+      }
     } catch (err) {
-      console.error('Error creating/activating clinic:', err);
+      console.error('Error activating clinic:', err);
       setError(
         err?.response?.data?.message ||
         err?.message ||
-        'Failed to create or activate clinic. Please contact support.'
+        'Failed to activate clinic. Please contact support.'
       );
     } finally {
       setIsLoading(false);
@@ -85,36 +66,25 @@ const ClinicProfile = () => {
   const fetchClinicData = async () => {
     if (!user || !user.clinicId) {
       console.log('No user or clinicId available:', user);
+      setError('No clinic associated with this user. Please contact support or register your clinic.');
+      setIsLoading(false);
+      // Do NOT redirect or navigate away
       return;
     }
-    
     try {
       setIsLoading(true);
       setError(null);
-      
+      // Always clear localStorage cache before fetching
+      localStorage.removeItem('clinicData');
       console.log('Fetching real clinic data for clinicId:', user.clinicId);
-      
-      // Fetch the clinic data
-      let clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
-      let clinicData = clinicDataResponse.data || clinicDataResponse;
-      console.log('Processed clinic data from API:', clinicData);
-      
-      // If clinic is missing or inactive, activate it
-      if (!clinicData || clinicData.status !== 'active') {
-        await createOrActivateClinic();
-        // Fetch again after activation
-        clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
-        clinicData = clinicDataResponse.data || clinicDataResponse;
-      }
-      
+      // Fetch the clinic data from backend
+      const clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
+      const clinicData = clinicDataResponse.data || clinicDataResponse;
+      console.log('Fetched clinic data from API:', clinicData);
       if (!clinicData) {
         throw new Error('No clinic data received from server');
       }
-      
-      // Store the complete clinic data
       setClinicData(clinicData);
-      
-      // Initialize form with the fetched data
       setFormData({
         name: clinicData?.name || '',
         email: clinicData?.email || '',
@@ -137,8 +107,8 @@ const ClinicProfile = () => {
       setIsLoading(false);
     }
   };
-  
-  // Load fresh clinic data when component mounts
+
+  // Load fresh clinic data when component mounts or user changes
   useEffect(() => {
     fetchClinicData();
   }, [user]);
@@ -158,24 +128,33 @@ const ClinicProfile = () => {
       setError(null);
       setSuccess(null);
 
+      // Ensure clinic name is not empty
+      if (!formData.name || formData.name.trim() === '') {
+        setError('Clinic name is required.');
+        setIsLoading(false);
+        return;
+      }
+
       // Create a copy of formData for submission
       const dataToSubmit = { ...formData };
-
       console.log('Submitting clinic data update to backend:', dataToSubmit);
 
       // Update clinic details via API
       const response = await clinicService.updateClinicSettings(user.clinicId, dataToSubmit);
       console.log('Update response from backend:', response);
-      
+
+      // Clear cached clinic data to force refetch
+      localStorage.removeItem('clinicData');
+
       // Refresh auth context to get updated clinic data
       await refreshAuth();
-      
+
       // Show success message
       setSuccess('Clinic profile updated successfully');
-      
+
       // Exit edit mode
       setIsEditing(false);
-      
+
       // Refresh clinic data to show the latest information from the database
       await fetchClinicData();
     } catch (err) {

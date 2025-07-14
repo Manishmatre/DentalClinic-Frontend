@@ -72,12 +72,72 @@ export const setClinicIdInStorage = (clinicId) => {
 };
 
 /**
- * Clear clinic data from localStorage
+ * Get clinic data from multiple sources with fallback
+ * @returns {object|null} Clinic data or null if not found
+ */
+export const getClinicDataFromStorage = () => {
+  try {
+    // Try to get from clinicData first (most complete)
+    const clinicData = localStorage.getItem('clinicData');
+    if (clinicData) {
+      const parsedClinicData = JSON.parse(clinicData);
+      if (parsedClinicData && parsedClinicData._id) {
+        return parsedClinicData;
+      }
+    }
+    
+    // Try to get from userData
+    const userData = localStorage.getItem('userData');
+    if (userData) {
+      const parsedUserData = JSON.parse(userData);
+      if (parsedUserData && parsedUserData.clinicId) {
+        // If clinicId is an object, extract the ID
+        const clinicId = typeof parsedUserData.clinicId === 'object' ? 
+          (parsedUserData.clinicId._id || parsedUserData.clinicId.id) : 
+          parsedUserData.clinicId;
+        
+        if (clinicId) {
+          return { _id: clinicId, name: parsedUserData.clinicName || 'Unknown Clinic' };
+        }
+      }
+    }
+    
+    // Try to get from defaultClinicId
+    const defaultClinicId = localStorage.getItem('defaultClinicId');
+    if (defaultClinicId) {
+      return { _id: defaultClinicId, name: 'Default Clinic' };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting clinic data from storage:', error);
+    return null;
+  }
+};
+
+/**
+ * Set clinic data in localStorage
+ * @param {object} clinicData - Clinic data to store
+ */
+export const setClinicDataInStorage = (clinicData) => {
+  try {
+    if (clinicData && clinicData._id) {
+      localStorage.setItem('clinicData', JSON.stringify(clinicData));
+      console.log('Clinic data stored successfully:', clinicData);
+    }
+  } catch (error) {
+    console.error('Error setting clinic data in storage:', error);
+  }
+};
+
+/**
+ * Clear all clinic-related data from localStorage
  */
 export const clearClinicDataFromStorage = () => {
   try {
-    localStorage.removeItem('clinicId');
     localStorage.removeItem('clinicData');
+    localStorage.removeItem('defaultClinicId');
+    console.log('Clinic data cleared from storage');
   } catch (error) {
     console.error('Error clearing clinic data from storage:', error);
   }
@@ -87,5 +147,7 @@ export default {
   getClinicIdFromStorage,
   getClinicNameFromStorage,
   setClinicIdInStorage,
+  getClinicDataFromStorage,
+  setClinicDataInStorage,
   clearClinicDataFromStorage
 };

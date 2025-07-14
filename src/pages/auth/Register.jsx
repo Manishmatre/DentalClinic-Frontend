@@ -3,7 +3,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import Alert from '../../components/ui/Alert';
 import api from '../../api/axios';
-import { FaSearch, FaSpinner } from 'react-icons/fa';
+import { FaSearch, FaSpinner, FaTooth, FaUserPlus } from 'react-icons/fa';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -757,21 +759,24 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
-        <div>
-          <h1 className="text-center text-4xl font-extrabold text-gray-900">
-            Complite Clinic Management
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <Card className="max-w-md w-full p-8">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4">
+            <FaTooth className="h-12 w-12 text-indigo-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            DentalOS.AI
           </h1>
-          <h2 className="mt-2 text-center text-2xl font-semibold text-gray-700">
+          <h2 className="text-xl font-semibold text-gray-800">
             {formData.role === 'Admin' ? 'Register your clinic' : `Register as ${formData.role}`}
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-sm text-gray-600">
             Step {currentStep} of 3
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={currentStep === 3 ? handleSubmit : (e) => e.preventDefault()}>
+        <form className="space-y-6" onSubmit={currentStep === 3 ? handleSubmit : (e) => e.preventDefault()}>
           {error && (
             <Alert variant="error" message={error} />
           )}
@@ -784,35 +789,49 @@ const Register = () => {
             </Link>
             <div className="flex space-x-3">
               {currentStep > 1 && (
-                <button
+                <Button
                   type="button"
                   onClick={handlePrevious}
-                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+                  variant="secondary"
                 >
                   Previous
-                </button>
+                </Button>
               )}
               {currentStep < 3 ? (
-                <button
+                <Button
                   type="button"
                   onClick={handleNext}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+                  variant="primary"
                 >
                   Next
-                </button>
+                </Button>
               ) : (
-                <button
+                <Button
                   type="submit"
                   disabled={loading}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                  variant="primary"
+                  className="flex items-center"
                 >
-                  {loading ? 'Registering...' : 'Complete Registration'}
-                </button>
+                  {loading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Registering...
+                    </>
+                  ) : (
+                    <>
+                      <FaUserPlus className="mr-2" />
+                      Complete Registration
+                    </>
+                  )}
+                </Button>
               )}
             </div>
           </div>
         </form>
-      </div>
+      </Card>
     </div>
   );
 };

@@ -20,9 +20,8 @@ import { SearchIcon, AddIcon } from '@chakra-ui/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import ReceptionistLayout from '../../layouts/ReceptionistLayout';
 import patientService from '../../api/patients/patientService';
-import PatientsList from '../../components/patients/PatientsList';
+import EnhancedPatientList from '../../components/patients/PatientList';
 import PatientModal from '../../components/patients/PatientModal';
-import PatientDetailsModal from '../../components/patients/PatientDetailsModal';
 
 /**
  * PatientList page for receptionists to view and manage patients
@@ -33,7 +32,6 @@ const PatientList = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [selectedPatient, setSelectedPatient] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
@@ -44,11 +42,7 @@ const PatientList = () => {
     onClose: onAddModalClose 
   } = useDisclosure();
   
-  const { 
-    isOpen: isDetailsModalOpen, 
-    onOpen: onDetailsModalOpen, 
-    onClose: onDetailsModalClose 
-  } = useDisclosure();
+  // Patient details are now shown in a dedicated page
 
   // Fetch patients on component mount
   useEffect(() => {
@@ -124,8 +118,7 @@ const PatientList = () => {
   };
 
   const handleViewDetails = (patient) => {
-    setSelectedPatient(patient);
-    onDetailsModalOpen();
+    navigate(`/admin/patients/${patient._id}`);
   };
 
   const handleCreateAppointment = (patient) => {
@@ -194,11 +187,39 @@ const PatientList = () => {
             </Button>
           </Box>
         ) : (
-          <PatientsList 
+          <EnhancedPatientList 
             patients={filteredPatients} 
-            onViewDetails={handleViewDetails}
-            onCreateAppointment={handleCreateAppointment}
-            onRefresh={handleRefresh}
+            loading={loading}
+            onViewPatient={handleViewDetails}
+            onEditPatient={(patient) => navigate(`/admin/patients/edit/${patient._id || patient.id}`)}
+            onDeletePatient={() => toast({
+              title: 'Info',
+              description: 'Delete functionality is available in the admin panel',
+              status: 'info',
+              duration: 3000,
+              isClosable: true,
+            })}
+            onExportData={(format) => toast({
+              title: 'Info',
+              description: `Export as ${format.toUpperCase()} is available in the admin panel`,
+              status: 'info',
+              duration: 3000,
+              isClosable: true,
+            })}
+            onPrintList={() => window.print()}
+            onStatusChange={() => toast({
+              title: 'Info',
+              description: 'Status change is available in the admin panel',
+              status: 'info',
+              duration: 3000,
+              isClosable: true,
+            })}
+            totalPatients={filteredPatients.length}
+            currentPage={1}
+            totalPages={1}
+            onPageChange={() => {}}
+            pageSize={filteredPatients.length}
+            onPageSizeChange={() => {}}
           />
         )}
       </Container>
@@ -212,15 +233,7 @@ const PatientList = () => {
         />
       )}
 
-      {/* Patient Details Modal */}
-      {isDetailsModalOpen && selectedPatient && (
-        <PatientDetailsModal
-          isOpen={isDetailsModalOpen}
-          onClose={onDetailsModalClose}
-          patient={selectedPatient}
-          onRefresh={handleRefresh}
-        />
-      )}
+      {/* Patient details are now shown in a dedicated page */}
     </ReceptionistLayout>
   );
 };

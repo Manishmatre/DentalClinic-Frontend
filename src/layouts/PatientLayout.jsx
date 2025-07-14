@@ -97,7 +97,7 @@ const PatientNav = ({ user, clinic }) => {
               {/* Navigation Links */}
               <div className="py-1">
                 <Link
-                  to="/patient/profile"
+                  to="/patient/profile-settings"
                   className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors duration-150"
                 >
                   <svg className="mr-3 h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">

@@ -1,37 +1,87 @@
 import client from '../client';
 
 /**
+ * Get dental statistics for dashboard
+ * @returns {Promise} - Promise with dental statistics data
+ */
+export const getDentalStats = async () => {
+  try {
+    const response = await client.get('/dental/stats');
+    return response.data.data;
+  } catch (error) {
+    console.error('Error fetching dental statistics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get dental procedures list
+ * @returns {Promise} - Promise with dental procedures data
+ */
+export const getDentalProcedures = async () => {
+  try {
+    const response = await client.get('/dental/procedures');
+    return response.data.data;
+  } catch (error) {
+    console.error('Error fetching dental procedures:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a new dental procedure
+ * @param {Object} procedureData - Procedure data
+ * @returns {Promise} - Promise with created procedure data
+ */
+export const addDentalProcedure = async (procedureData) => {
+  try {
+    const response = await client.post('/dental/procedures', procedureData);
+    return response.data.data;
+  } catch (error) {
+    console.error('Error adding dental procedure:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get dental reports
+ * @param {Object} filters - Report filters
+ * @returns {Promise} - Promise with dental reports data
+ */
+export const getDentalReports = async (filters = {}) => {
+  try {
+    const response = await client.get('/dental/reports', { params: filters });
+    return response.data.data;
+  } catch (error) {
+    console.error('Error fetching dental reports:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get patients with dental records
+ * @param {Object} queryParams - Query parameters for filtering and pagination
+ * @returns {Promise} - Promise with patients data
+ */
+export const getDentalPatients = async (queryParams = {}) => {
+  try {
+    const response = await client.get('/dental/patients', { params: queryParams });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching dental patients:', error);
+    throw error;
+  }
+};
+
+/**
  * Get dental chart for a patient
  * @param {string} patientId - Patient ID
  * @returns {Promise} - Promise with dental chart data
  */
 export const getPatientDentalChart = async (patientId) => {
   try {
-    // First try to get from API
-    try {
-      const response = await client.get(`/dental/patients/${patientId}/chart`);
-      return response.data.data;
-    } catch (apiError) {
-      console.log('API not available, using mock data');
-      // If API fails, return mock data for demo
-      return {
-        _id: 'mock-chart-id',
-        patientId: patientId,
-        teeth: {
-          1: { condition: 'healthy', surfaces: [], notes: '' },
-          2: { condition: 'filled', surfaces: ['occlusal'], notes: 'Composite filling' },
-          3: { condition: 'healthy', surfaces: [], notes: '' },
-          4: { condition: 'healthy', surfaces: [], notes: '' },
-          5: { condition: 'healthy', surfaces: [], notes: '' },
-          6: { condition: 'caries', surfaces: ['occlusal', 'distal'], notes: 'Needs treatment' },
-          7: { condition: 'healthy', surfaces: [], notes: '' },
-          8: { condition: 'healthy', surfaces: [], notes: '' },
-          // Add more teeth as needed
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-    }
+    const response = await client.get(`/dental/patients/${patientId}/chart`);
+    return response.data.data;
   } catch (error) {
     console.error('Error fetching dental chart:', error);
     throw error;
@@ -82,61 +132,8 @@ export const addTreatment = async (chartId, toothNumber, treatmentData) => {
  */
 export const getPatientTreatments = async (patientId) => {
   try {
-    // First try to get from API
-    try {
-      const response = await client.get(`/dental/patients/${patientId}/treatments`);
-      return response.data.data;
-    } catch (apiError) {
-      console.log('API not available, using mock data');
-      // If API fails, return mock data for demo
-      return [
-        {
-          _id: 'treatment-1',
-          patientId: patientId,
-          toothNumber: 6,
-          quadrant: 'upper-right',
-          procedure: 'Composite Filling',
-          procedureCode: 'D2391',
-          surfaces: ['occlusal', 'distal'],
-          notes: 'Composite filling on tooth #6',
-          performedBy: 'Dr. Smith',
-          performedDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          cost: 150,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          _id: 'treatment-2',
-          patientId: patientId,
-          toothNumber: 2,
-          quadrant: 'upper-right',
-          procedure: 'Composite Filling',
-          procedureCode: 'D2391',
-          surfaces: ['occlusal'],
-          notes: 'Composite filling on tooth #2',
-          performedBy: 'Dr. Smith',
-          performedDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          cost: 120,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          _id: 'treatment-3',
-          patientId: patientId,
-          toothNumber: 19,
-          quadrant: 'lower-left',
-          procedure: 'Root Canal',
-          procedureCode: 'D3310',
-          surfaces: [],
-          notes: 'Root canal treatment on tooth #19',
-          performedBy: 'Dr. Johnson',
-          performedDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-          cost: 800,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ];
-    }
+    const response = await client.get(`/dental/patients/${patientId}/treatments`);
+    return response.data.data;
   } catch (error) {
     console.error('Error fetching treatments:', error);
     throw error;
@@ -150,38 +147,8 @@ export const getPatientTreatments = async (patientId) => {
  */
 export const getPatientImages = async (patientId) => {
   try {
-    // First try to get from API
-    try {
-      const response = await client.get(`/dental/patients/${patientId}/images`);
-      return response.data.data;
-    } catch (apiError) {
-      console.log('API not available, using mock data');
-      // If API fails, return mock data for demo
-      return [
-        {
-          _id: 'image-1',
-          patientId: patientId,
-          imageType: 'panoramic',
-          imageUrl: 'https://via.placeholder.com/800x400?text=Panoramic+X-Ray',
-          description: 'Full mouth panoramic X-ray',
-          takenDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          takenBy: 'Dr. Smith',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          _id: 'image-2',
-          patientId: patientId,
-          imageType: 'bitewing',
-          imageUrl: 'https://via.placeholder.com/400x300?text=Bitewing+X-Ray',
-          description: 'Bitewing X-ray of right side',
-          takenDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-          takenBy: 'Dr. Johnson',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ];
-    }
+    const response = await client.get(`/dental/patients/${patientId}/images`);
+    return response.data.data;
   } catch (error) {
     console.error('Error fetching dental images:', error);
     throw error;
@@ -267,7 +234,12 @@ const dentalService = {
   uploadDentalImage,
   getDentalImage,
   updateDentalImage,
-  deleteDentalImage
+  deleteDentalImage,
+  getDentalStats,
+  getDentalProcedures,
+  addDentalProcedure,
+  getDentalReports,
+  getDentalPatients
 };
 
 export default dentalService;

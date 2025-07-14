@@ -5,6 +5,7 @@ import adminRoutes from './adminRoutes';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import NotFound from '../pages/NotFound';
+import ChairManagementPage from '../pages/dental/ChairManagement';
 
 const renderRoute = (route) => {
   const Component = route.element;
@@ -61,6 +62,8 @@ const AppRoutes = () => {
             element={<Layout />}
           >
             {routeGroup.children.map(renderRoute)}
+            {/* Explicitly add Chair Management route for admin */}
+            <Route path="dental/chairs" element={<ChairManagementPage />} />
           </Route>
         );
       })}

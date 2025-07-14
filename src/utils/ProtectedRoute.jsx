@@ -25,13 +25,40 @@ const ProtectedRoute = ({
   }
 
   // Check email verification if required
-  if (requireVerified && !user.isEmailVerified) {
+  // Only redirect if verification is required AND we have explicit confirmation that email is NOT verified
+  // This prevents redirection when the property is missing or undefined
+  if (requireVerified && user.isEmailVerified === false) {
     return <Navigate to="/verify-email" state={{ email: user.email }} replace />;
   }
 
   // Check clinic association if required
   if (requireClinic && !clinic) {
+    console.warn('No clinic association found:', {
+      user: user?.id,
+      userClinicId: user?.clinicId,
+      clinic: clinic,
+      isAuthenticated,
+      requireClinic
+    });
+    
+    // Try to get clinic data from localStorage as fallback
+    const storedClinicData = localStorage.getItem('clinicData');
+    if (storedClinicData) {
+      try {
+        const parsedClinicData = JSON.parse(storedClinicData);
+        if (parsedClinicData && parsedClinicData._id) {
+          console.log('Found clinic data in localStorage, allowing access');
+          // Don't redirect, allow access with stored clinic data
+        } else {
+          return <Navigate to="/no-clinic" replace />;
+        }
+      } catch (e) {
+        console.error('Error parsing stored clinic data:', e);
+        return <Navigate to="/no-clinic" replace />;
+      }
+    } else {
     return <Navigate to="/no-clinic" replace />;
+    }
   }
 
   // Check if clinic is active

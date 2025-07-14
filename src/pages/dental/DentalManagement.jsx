@@ -147,6 +147,15 @@ const DentalManagement = () => {
               </svg>
               Reports
             </button>
+            <button
+              className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-sm transition-colors"
+              onClick={() => navigate('/dental/chairs')}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5v14" />
+              </svg>
+              Chair Management
+            </button>
           </div>
         </div>
         <p className="text-gray-600 mb-4">

@@ -8,7 +8,8 @@ import {
   FaPhone, 
   FaUserMd, 
   FaCalendarAlt,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaInfoCircle
 } from 'react-icons/fa';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -26,10 +27,18 @@ const StaffRequestsList = ({ onRequestProcessed }) => {
   const [actionType, setActionType] = useState('');
   const [filter, setFilter] = useState('pending'); // 'pending', 'approved', 'rejected', 'all'
   const [refreshKey, setRefreshKey] = useState(0); // Used to force refresh
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     fetchStaffRequests();
   }, [filter, refreshKey]);
+  
+  // Clear any success/error messages when component unmounts
+  useEffect(() => {
+    return () => {
+      setError(null);
+    };
+  }, []);
 
   const fetchStaffRequests = async () => {
     try {
@@ -62,7 +71,8 @@ const StaffRequestsList = ({ onRequestProcessed }) => {
     } catch (err) {
       console.error('Error fetching staff requests:', err);
       setError(err.response?.data?.message || 'Failed to load staff requests');
-      toast.error('Failed to load staff requests');
+      toast.error('Failed to load staff requests. Please try again later.');
+      setStaffRequests([]);
     } finally {
       setIsLoading(false);
     }
@@ -109,20 +119,33 @@ const StaffRequestsList = ({ onRequestProcessed }) => {
       setResponseMessage('');
       
       // Force refresh the list
-      setRefreshKey(prevKey => prevKey + 1);
+      setRefreshKey(prev => prev + 1);
       
-      // Notify parent component that a request was processed with additional info
+      // Notify parent component if needed with detailed information
       if (onRequestProcessed) {
         onRequestProcessed({
           action: actionType,
-          staffRequest: selectedRequest,
-          staffCreated: actionType === 'approve' ? true : false
+          requestId: selectedRequest._id,
+          staffName: selectedRequest.name,
+          staffRole: selectedRequest.role,
+          responseMessage,
+          success: true
         });
       }
     } catch (err) {
-      console.error(`Error ${actionType}ing staff request:`, err);
-      console.error('Error details:', err.response?.data || err.message);
-      toast.error(`Failed to ${actionType} staff request: ${err.response?.data?.message || err.message}`);
+      console.error('Error processing staff request:', err);
+      toast.error(err.response?.data?.message || 'Failed to process staff request. Please try again.');
+      setShowResponseModal(false);
+      
+      // Notify parent of failure if callback exists
+      if (onRequestProcessed) {
+        onRequestProcessed({
+          action: actionType,
+          requestId: selectedRequest?._id,
+          error: err.message || 'Unknown error occurred',
+          success: false
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -155,29 +178,53 @@ const StaffRequestsList = ({ onRequestProcessed }) => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Staff Requests</h2>
-        <div className="flex space-x-2">
-          <select
-            className="border rounded-md px-3 py-2 text-sm"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+    <div className="staff-requests-container">
+      {/* Filter Controls */}
+      <div className="flex flex-wrap justify-between items-center mb-6">
+        <div className="flex space-x-2 mb-2 sm:mb-0">
+          <Button
+            variant={filter === 'pending' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('pending')}
+            className={filter === 'pending' ? 'bg-indigo-600' : 'bg-gray-200 text-gray-700'}
           >
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="all">All</option>
-          </select>
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={fetchStaffRequests}
-            disabled={isLoading}
+            Pending
+          </Button>
+          <Button
+            variant={filter === 'approved' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('approved')}
+            className={filter === 'approved' ? 'bg-green-600' : 'bg-gray-200 text-gray-700'}
           >
-            Refresh
+            Approved
+          </Button>
+          <Button
+            variant={filter === 'rejected' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('rejected')}
+            className={filter === 'rejected' ? 'bg-red-600' : 'bg-gray-200 text-gray-700'}
+          >
+            Rejected
+          </Button>
+          <Button
+            variant={filter === 'all' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('all')}
+            className={filter === 'all' ? 'bg-gray-700' : 'bg-gray-200 text-gray-700'}
+          >
+            All
           </Button>
         </div>
+        
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setRefreshKey(prev => prev + 1)}
+          className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+          disabled={isLoading}
+        >
+          <FaInfoCircle className="mr-1" /> Refresh
+        </Button>
       </div>
 
       {error && (
@@ -214,66 +261,95 @@ const StaffRequestsList = ({ onRequestProcessed }) => {
           </div>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {staffRequests.map((request) => (
-            <Card key={request._id}>
-              <div className="p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center space-x-2 mb-2">
-                      <FaUser className="text-gray-500" />
-                      <h3 className="font-medium text-lg">{request.name}</h3>
-                      {getStatusBadge(request.status)}
-                    </div>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      <div className="flex items-center space-x-2">
-                        <FaEnvelope className="text-gray-400" />
-                        <span>{request.email}</span>
+            <Card key={request._id} className={`overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 ${request.status === 'pending' ? 'border-l-4 border-l-indigo-500' : request.status === 'approved' ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500'}`}>
+              <div className="p-0">
+                <div className="bg-gradient-to-r from-gray-50 to-white p-5">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex justify-between items-center mb-3">
+                        <div className="flex items-center">
+                          <div className="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                            <FaUserMd className="text-indigo-600 text-xl" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-semibold text-gray-800">{request.name}</h3>
+                            <div className="text-sm text-gray-500">{request.role} Applicant</div>
+                          </div>
+                        </div>
+                        <div>
+                          {getStatusBadge(request.status)}
+                        </div>
                       </div>
-                      {request.phone && (
-                        <div className="flex items-center space-x-2">
-                          <FaPhone className="text-gray-400" />
-                          <span>{request.phone}</span>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div className="space-y-2 bg-white p-3 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-gray-700 border-b pb-1 mb-2">Contact Information</h4>
+                          <div className="flex items-center space-x-2">
+                            <FaEnvelope className="text-indigo-400" />
+                            <span className="text-gray-700">{request.email}</span>
+                          </div>
+                          {request.phone && (
+                            <div className="flex items-center space-x-2">
+                              <FaPhone className="text-indigo-400" />
+                              <span className="text-gray-700">{request.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-2 bg-white p-3 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-gray-700 border-b pb-1 mb-2">Request Details</h4>
+                          <div className="flex items-center space-x-2">
+                            <FaUserMd className="text-indigo-400" />
+                            <span className="text-gray-700">Applied for: <span className="font-medium">{request.role}</span></span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <FaCalendarAlt className="text-indigo-400" />
+                            <span className="text-gray-700">Requested on: {formatDate(request.createdAt)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {request.message && (
+                        <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-md">
+                          <div className="flex items-start">
+                            <FaInfoCircle className="text-blue-500 mt-1 mr-2" />
+                            <div>
+                              <h4 className="font-medium text-blue-700 mb-1">Applicant Message</h4>
+                              <p className="text-sm text-gray-700">{request.message}</p>
+                            </div>
+                          </div>
                         </div>
                       )}
-                      <div className="flex items-center space-x-2">
-                        <FaUserMd className="text-gray-400" />
-                        <span>Role: {request.role}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <FaCalendarAlt className="text-gray-400" />
-                        <span>Requested: {formatDate(request.createdAt)}</span>
-                      </div>
                     </div>
-                    {request.message && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                        <p className="text-sm text-gray-700">{request.message}</p>
-                      </div>
-                    )}
                   </div>
-                  {request.status === 'pending' && (
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => handleApprove(request)}
-                        disabled={isLoading}
-                        icon={<FaCheckCircle />}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleReject(request)}
-                        disabled={isLoading}
-                        icon={<FaTimesCircle />}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  )}
                 </div>
+                
+                {request.status === 'pending' && (
+                  <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end space-x-3">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={() => handleApprove(request)}
+                      disabled={isLoading}
+                      icon={<FaCheckCircle />}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md shadow-sm transition-colors"
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleReject(request)}
+                      disabled={isLoading}
+                      icon={<FaTimesCircle />}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md shadow-sm transition-colors"
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                )}
               </div>
             </Card>
           ))}

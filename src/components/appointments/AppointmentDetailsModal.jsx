@@ -16,6 +16,9 @@ import {
 import { toast } from 'react-toastify';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import appointmentService from '../../api/appointments/appointmentService';
+import serviceService from '../../api/services/serviceService';
+import treatmentService from '../../api/treatments';
+import { useAuth } from '../../hooks/useAuth';
 
 const AppointmentDetailsModal = ({ 
   isOpen, 
@@ -23,7 +26,7 @@ const AppointmentDetailsModal = ({
   appointment, 
   onEdit, 
   onDelete, 
-  onUpdateStatus, 
+  onUpdateStatus = () => {}, 
   userRole = 'Admin',
   isLoading = false,
   onReschedule
@@ -37,6 +40,11 @@ const AppointmentDetailsModal = ({
   const [isExporting, setIsExporting] = useState(false);
   const [rescheduleHistory, setRescheduleHistory] = useState([]);
   const [medicalNotes, setMedicalNotes] = useState('');
+  const [serviceName, setServiceName] = useState('');
+  const [serviceLoading, setServiceLoading] = useState(false);
+  const [serviceMap, setServiceMap] = useState({});
+  const [treatmentMap, setTreatmentMap] = useState({});
+  const { clinic, user } = useAuth();
 
   useEffect(() => {
     if (appointment) {
@@ -52,6 +60,25 @@ const AppointmentDetailsModal = ({
     }
   }, [appointment]);
 
+  useEffect(() => {
+    // Fetch all treatments for the current clinic and build a map of ID to name
+    const fetchTreatments = async () => {
+      let clinicId = null;
+      if (user && user.clinicId) {
+        clinicId = typeof user.clinicId === 'object' ? user.clinicId._id : user.clinicId;
+      } else if (clinic && clinic._id) {
+        clinicId = clinic._id;
+      }
+      if (!clinicId) return;
+      const result = await treatmentService.getTreatments({ clinicId });
+      const treatments = Array.isArray(result.data) ? result.data : [];
+      const map = {};
+      treatments.forEach(t => { map[t._id] = t.name; });
+      setTreatmentMap(map);
+    };
+    fetchTreatments();
+  }, [clinic, user]);
+
   if (!localAppointment) return null;
   
   // Handle tab change
@@ -59,31 +86,107 @@ const AppointmentDetailsModal = ({
     setActiveTab(tabId);
   };
 
-  const handleStatusUpdate = async (newStatus) => {
-    if (localAppointment.status !== newStatus) {
-      setIsUpdatingStatus(true);
-      try {
-        await onUpdateStatus({
-          ...localAppointment,
-          status: newStatus
-        });
-        setLocalAppointment(prev => ({
-          ...prev,
-          status: newStatus
-        }));
-        toast.success(`Appointment status updated to ${newStatus}`);
-      } catch (error) {
-        toast.error(`Failed to update status: ${error.message || 'Unknown error'}`);
-      } finally {
-        setIsUpdatingStatus(false);
+  const handleStatusUpdate = async (status) => {
+    if (status === localAppointment.status) return;
+    
+    // Check if user has permission to update to this status
+    let canUpdateToStatus = false;
+    let errorMessage = '';
+    
+    switch(userRole) {
+      case 'Admin':
+        // Admin can update to any status
+        canUpdateToStatus = true;
+        break;
+      case 'Receptionist':
+        // Receptionist can mark as Scheduled, Cancelled, No Show, but not Completed
+        if (status === 'Completed') {
+          errorMessage = 'Receptionists cannot mark appointments as Completed. Only Doctors and Admins can do this.';
+        } else {
+          canUpdateToStatus = true;
+        }
+        break;
+      case 'Doctor':
+        // Doctor can mark as Completed or Scheduled, but not Cancelled or No Show
+        if (['Cancelled', 'No Show'].includes(status)) {
+          errorMessage = 'Doctors cannot mark appointments as Cancelled or No Show. Please contact a Receptionist or Admin.';
+        } else {
+          canUpdateToStatus = true;
+        }
+        break;
+      case 'Nurse':
+        // Nurses can only mark as Scheduled
+        if (status !== 'Scheduled') {
+          errorMessage = 'Nurses can only mark appointments as Scheduled. Please contact a Doctor or Admin for other status changes.';
+        } else {
+          canUpdateToStatus = true;
+        }
+        break;
+      default:
+        errorMessage = `Your role (${userRole}) does not have permission to update appointment status.`;
+        canUpdateToStatus = false;
+    }
+    
+    // Additional rules based on current status
+    if (localAppointment.status === 'Completed' && status !== 'Completed') {
+      // Only Admin can change from Completed to another status
+      if (userRole !== 'Admin') {
+        errorMessage = 'Only Admins can change an appointment status from Completed to another status.';
+        canUpdateToStatus = false;
       }
+    }
+    
+    if (!canUpdateToStatus) {
+      toast.error(errorMessage);
+      return;
+    }
+    
+    setIsUpdatingStatus(true);
+    try {
+      const result = await onUpdateStatus(localAppointment, status);
+      if (result && result.error) {
+        toast.error(result.message || 'Failed to update status');
+        return;
+      }
+      setLocalAppointment(prev => ({
+        ...prev,
+        status: status
+      }));
+      toast.success(`Appointment status updated to ${status}`);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      
+      // Handle specific error types
+      let errorMsg = 'Failed to update status';
+      if (error.response) {
+        if (error.response.status === 403) {
+          errorMsg = 'Permission denied: You do not have permission to update this appointment\'s status';
+        } else if (error.response.status === 401) {
+          errorMsg = 'Authentication required. Please log in again.';
+        } else if (error.response.data?.message) {
+          errorMsg = error.response.data.message;
+        }
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
+      toast.error(errorMsg);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
+    // Check if user has permission to delete appointments
+    if (!['Admin', 'Receptionist'].includes(userRole)) {
+      toast.error(`Your role (${userRole}) does not have permission to delete appointments. Only Admin and Receptionist can delete appointments.`);
+      return;
+    }
+    
     if (isConfirmingDelete) {
+      // User has confirmed deletion
       try {
-        await onDelete(localAppointment._id);
+        onDelete(localAppointment._id);
         setIsConfirmingDelete(false);
         onClose();
         toast.success('Appointment deleted successfully');
@@ -97,18 +200,83 @@ const AppointmentDetailsModal = ({
   };
 
   const handleReschedule = () => {
+    // Check if user has permission to reschedule appointments based on role and appointment status
+    if (userRole) {
+      // Only certain roles can reschedule appointments
+      const canReschedule = 
+        (['Admin', 'Receptionist', 'Doctor'].includes(userRole) && 
+         !['Completed', 'Cancelled', 'No Show'].includes(localAppointment.status)) ||
+        (userRole === 'Patient' && localAppointment.status === 'Scheduled');
+      
+      if (!canReschedule) {
+        let errorMessage = '';
+        
+        if (['Completed', 'Cancelled', 'No Show'].includes(localAppointment.status)) {
+          errorMessage = `Cannot reschedule: Appointments with status '${localAppointment.status}' cannot be rescheduled.`;
+        } else {
+          errorMessage = `Your role (${userRole}) does not have permission to reschedule this appointment.`;
+        }
+        
+        toast.error(errorMessage);
+        return;
+      }
+    }
+    
     setIsRescheduling(true);
   };
 
   const handleRescheduleSubmit = async () => {
-    if (onReschedule) {
-      // Create a reschedule history entry
+    if (!onReschedule || !localAppointment || !localAppointment._id) {
+      toast.error('Cannot reschedule: Missing appointment information');
+      return;
+    }
+    
+    // Double-check permissions before submitting
+    const canReschedule = 
+      (['Admin', 'Receptionist', 'Doctor'].includes(userRole) && 
+       !['Completed', 'Cancelled', 'No Show'].includes(localAppointment.status)) ||
+      (userRole === 'Patient' && localAppointment.status === 'Scheduled');
+    
+    if (!canReschedule) {
+      toast.error(`You don't have permission to reschedule this appointment.`);
+      setIsRescheduling(false);
+      return;
+    }
+    
+    // Get the new date from the form
+    const rescheduleDate = document.getElementById('reschedule-date')?.value;
+    const rescheduleTime = document.getElementById('reschedule-time')?.value;
+    const rescheduleReason = document.getElementById('reschedule-reason')?.value || 'Appointment rescheduled';
+    
+    if (!rescheduleDate || !rescheduleTime) {
+      toast.error('Please select a new date and time');
+      return;
+    }
+    
+    try {
+      // Create a new Date object from the form values
+      const [year, month, day] = rescheduleDate.split('-').map(Number);
+      const [hours, minutes] = rescheduleTime.split(':').map(Number);
+      
+      const newStartTime = new Date(year, month - 1, day, hours, minutes);
+      
+      // Validate the new date
+      if (isNaN(newStartTime.getTime())) {
+        toast.error('Invalid date or time format');
+        return;
+      }
+      
+      // Check if the new date is in the past
+      if (newStartTime < new Date()) {
+        toast.error('Cannot reschedule to a date/time in the past');
+        return;
+      }
+      
+      // Create a reschedule history entry for UI update
       const rescheduleEntry = {
         previousStartTime: localAppointment.startTime,
         previousEndTime: localAppointment.endTime,
-        newStartTime: newStartTime,
-        newEndTime: newEndTime,
-        reason: reason || 'Appointment rescheduled',
+        reason: rescheduleReason,
         rescheduledBy: userRole,
         rescheduledAt: new Date().toISOString()
       };
@@ -117,9 +285,15 @@ const AppointmentDetailsModal = ({
       setRescheduleHistory([...rescheduleHistory, rescheduleEntry]);
       
       // Call the parent component's reschedule handler
-      onReschedule(localAppointment._id, newStartTime, newEndTime, reason);
+      await onReschedule(localAppointment._id, newStartTime);
+      
+      // Close the reschedule form
+      setIsRescheduling(false);
+      toast.success('Appointment rescheduled successfully');
+    } catch (error) {
+      console.error('Error rescheduling appointment:', error);
+      toast.error('Failed to reschedule appointment: ' + (error.message || 'Unknown error'));
     }
-    setIsRescheduling(false);
   };
 
   const handleMedicalNotesUpdate = () => {
@@ -204,7 +378,10 @@ const AppointmentDetailsModal = ({
                 {localAppointment.status}
               </span>
               <h3 className="text-xl font-semibold text-gray-800 ml-2">
-                {localAppointment.patientName || (localAppointment.patientId && localAppointment.patientId.name) || 'Patient'}'s Appointment
+                {localAppointment.patientName || 
+                 (localAppointment.patientId && typeof localAppointment.patientId === 'object' && localAppointment.patientId.name) || 
+                 (localAppointment.patient && localAppointment.patient.name) || 
+                 'Patient'}'s Appointment
               </h3>
             </div>
             <div className="flex items-center text-gray-500 text-sm mb-1">
@@ -220,35 +397,47 @@ const AppointmentDetailsModal = ({
           <div className="flex space-x-2">
             {!isConfirmingDelete ? (
               <>
-                {['Admin', 'Receptionist', 'Doctor'].includes(userRole) && (
+                {/* Edit button - Admin, Receptionist, Doctor (only if appointment is not completed/cancelled) */}
+                {['Admin', 'Receptionist', 'Doctor'].includes(userRole) && 
+                 !['Completed', 'Cancelled', 'No Show'].includes(localAppointment.status) && (
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={() => onEdit(localAppointment)}
                     disabled={isUpdatingStatus}
                     icon={<FaEdit />}
+                    title="Edit appointment details"
                   >
                     Edit
                   </Button>
                 )}
-                {['Admin', 'Receptionist'].includes(userRole) && (
+                
+                {/* Delete button - Admin, Receptionist (only if appointment is not completed) */}
+                {['Admin', 'Receptionist'].includes(userRole) && 
+                 localAppointment.status !== 'Completed' && (
                   <Button
                     variant="danger"
                     size="sm"
                     onClick={handleDelete}
                     disabled={isUpdatingStatus}
                     icon={<FaTrash />}
+                    title="Delete this appointment"
                   >
                     Delete
                   </Button>
                 )}
-                {['Admin', 'Receptionist', 'Doctor', 'Patient'].includes(userRole) && (
+                
+                {/* Reschedule button - All roles except Patient can only reschedule upcoming appointments */}
+                {((['Admin', 'Receptionist', 'Doctor'].includes(userRole) && 
+                   !['Completed', 'Cancelled', 'No Show'].includes(localAppointment.status)) ||
+                  (userRole === 'Patient' && localAppointment.status === 'Scheduled')) && (
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={handleReschedule}
                     disabled={isUpdatingStatus || isRescheduling}
                     icon={<FaSync />}
+                    title="Reschedule this appointment"
                   >
                     {isRescheduling ? 'Rescheduling...' : 'Reschedule'}
                   </Button>
@@ -290,6 +479,67 @@ const AppointmentDetailsModal = ({
           className="mb-4"
         />
         
+        {/* Rescheduling Form */}
+        {isRescheduling && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <h4 className="text-lg font-medium text-blue-800 mb-3 flex items-center">
+              <FaSync className="mr-2" /> Reschedule Appointment
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label htmlFor="reschedule-date" className="block text-sm font-medium text-gray-700 mb-1">
+                  New Date
+                </label>
+                <input
+                  type="date"
+                  id="reschedule-date"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  defaultValue={new Date().toISOString().split('T')[0]}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <label htmlFor="reschedule-time" className="block text-sm font-medium text-gray-700 mb-1">
+                  New Time
+                </label>
+                <input
+                  type="time"
+                  id="reschedule-time"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  defaultValue={new Date().toTimeString().slice(0, 5)}
+                />
+              </div>
+            </div>
+            <div className="mb-4">
+              <label htmlFor="reschedule-reason" className="block text-sm font-medium text-gray-700 mb-1">
+                Reason for Rescheduling
+              </label>
+              <textarea
+                id="reschedule-reason"
+                rows="2"
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                placeholder="Reason for rescheduling"
+              ></textarea>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsRescheduling(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleRescheduleSubmit}
+              >
+                Confirm Reschedule
+              </Button>
+            </div>
+          </div>
+        )}
+        
         {/* Tab Content */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
           {/* Details Tab */}
@@ -301,13 +551,30 @@ const AppointmentDetailsModal = ({
                     <FaUser className="mr-2" /> Patient Information
                   </h4>
                   <p className="text-gray-800 font-medium">
-                    {localAppointment.patientName || (localAppointment.patientId && localAppointment.patientId.name) || 'Unknown Patient'}
+                    {localAppointment.patientName || 
+                     (localAppointment.patientId && typeof localAppointment.patientId === 'object' && localAppointment.patientId.name) || 
+                     (localAppointment.patient && localAppointment.patient.name) || 
+                     'Unknown Patient'}
                   </p>
-                  {localAppointment.patientId && localAppointment.patientId.email && (
-                    <p className="text-gray-600 text-sm">{localAppointment.patientId.email}</p>
+                  {/* Email */}
+                  {(localAppointment.patientEmail || 
+                    (localAppointment.patientId && typeof localAppointment.patientId === 'object' && localAppointment.patientId.email) || 
+                    (localAppointment.patient && localAppointment.patient.email)) && (
+                    <p className="text-gray-600 text-sm">
+                      {localAppointment.patientEmail || 
+                       (localAppointment.patientId && typeof localAppointment.patientId === 'object' && localAppointment.patientId.email) || 
+                       (localAppointment.patient && localAppointment.patient.email)}
+                    </p>
                   )}
-                  {localAppointment.patientId && localAppointment.patientId.phone && (
-                    <p className="text-gray-600 text-sm">{localAppointment.patientId.phone}</p>
+                  {/* Phone */}
+                  {(localAppointment.patientPhone || 
+                    (localAppointment.patientId && typeof localAppointment.patientId === 'object' && localAppointment.patientId.phone) || 
+                    (localAppointment.patient && localAppointment.patient.phone)) && (
+                    <p className="text-gray-600 text-sm">
+                      {localAppointment.patientPhone || 
+                       (localAppointment.patientId && typeof localAppointment.patientId === 'object' && localAppointment.patientId.phone) || 
+                       (localAppointment.patient && localAppointment.patient.phone)}
+                    </p>
                   )}
                 </div>
                 
@@ -316,13 +583,30 @@ const AppointmentDetailsModal = ({
                     <FaUserMd className="mr-2" /> Doctor Information
                   </h4>
                   <p className="text-gray-800 font-medium">
-                    {localAppointment.doctorName || (localAppointment.doctorId && localAppointment.doctorId.name) || 'Unknown Doctor'}
+                    Dr. {localAppointment.doctorName || 
+                       (localAppointment.doctorId && typeof localAppointment.doctorId === 'object' && localAppointment.doctorId.name) || 
+                       (localAppointment.doctor && localAppointment.doctor.name) || 
+                       'Unknown Doctor'}
                   </p>
-                  {localAppointment.doctorId && localAppointment.doctorId.email && (
-                    <p className="text-gray-600 text-sm">{localAppointment.doctorId.email}</p>
+                  {/* Email */}
+                  {(localAppointment.doctorEmail || 
+                    (localAppointment.doctorId && typeof localAppointment.doctorId === 'object' && localAppointment.doctorId.email) || 
+                    (localAppointment.doctor && localAppointment.doctor.email)) && (
+                    <p className="text-gray-600 text-sm">
+                      {localAppointment.doctorEmail || 
+                       (localAppointment.doctorId && typeof localAppointment.doctorId === 'object' && localAppointment.doctorId.email) || 
+                       (localAppointment.doctor && localAppointment.doctor.email)}
+                    </p>
                   )}
-                  {localAppointment.doctorId && localAppointment.doctorId.specialization && (
-                    <p className="text-gray-600 text-sm">{localAppointment.doctorId.specialization}</p>
+                  {/* Specialization */}
+                  {(localAppointment.specialization || 
+                    (localAppointment.doctorId && typeof localAppointment.doctorId === 'object' && localAppointment.doctorId.specialization) || 
+                    (localAppointment.doctor && localAppointment.doctor.specialization)) && (
+                    <p className="text-gray-600 text-sm">
+                      {localAppointment.specialization || 
+                       (localAppointment.doctorId && typeof localAppointment.doctorId === 'object' && localAppointment.doctorId.specialization) || 
+                       (localAppointment.doctor && localAppointment.doctor.specialization)}
+                    </p>
                   )}
                 </div>
               </div>
@@ -332,9 +616,10 @@ const AppointmentDetailsModal = ({
                   <FaNotesMedical className="mr-2" /> Appointment Details
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-gray-600 text-sm">Service Type</p>
-                    <p className="text-gray-800">{localAppointment.serviceType}</p>
+                  {/* Service Type */}
+                  <div className="mb-2">
+                    <span className="font-semibold">Service Type: </span>
+                    {treatmentMap[localAppointment.serviceType] || localAppointment.serviceType}
                   </div>
                   <div>
                     <p className="text-gray-600 text-sm">Reason</p>
@@ -349,22 +634,86 @@ const AppointmentDetailsModal = ({
                 </div>
               </div>
               
-              {['Admin', 'Receptionist', 'Doctor'].includes(userRole) && (
+              {/* Status Update Section with Role-Based Permissions */}
+              {['Admin', 'Receptionist', 'Doctor', 'Nurse'].includes(userRole) && (
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h4 className="text-sm font-semibold text-gray-600 mb-3">Update Status</h4>
                   <div className="flex flex-wrap gap-2">
-                    {Object.keys(APPOINTMENT_STATUS).map(status => (
-                      <Button
-                        key={status}
-                        variant={status === localAppointment.status ? 'primary' : 'secondary'}
-                        size="sm"
-                        onClick={() => handleStatusUpdate(status)}
-                        disabled={isUpdatingStatus || status === localAppointment.status}
-                        className={APPOINTMENT_STATUS_BUTTON_CLASSES[status]}
-                      >
-                        {status}
-                      </Button>
-                    ))}
+                    {Object.keys(APPOINTMENT_STATUS).map(status => {
+                      // Define permission rules for each status
+                      let canUpdateToStatus = false;
+                      let tooltipMessage = '';
+                      
+                      switch(userRole) {
+                        case 'Admin':
+                          // Admin can update to any status
+                          canUpdateToStatus = true;
+                          tooltipMessage = `Mark as ${status}`;
+                          break;
+                        case 'Receptionist':
+                          // Receptionist can mark as Scheduled, Cancelled, No Show, but not Completed
+                          if (status === 'Completed') {
+                            canUpdateToStatus = false;
+                            tooltipMessage = 'Receptionists cannot mark appointments as Completed';
+                          } else {
+                            canUpdateToStatus = true;
+                            tooltipMessage = `Mark as ${status}`;
+                          }
+                          break;
+                        case 'Doctor':
+                          // Doctor can mark as Completed or Scheduled, but not Cancelled or No Show
+                          if (['Cancelled', 'No Show'].includes(status)) {
+                            canUpdateToStatus = false;
+                            tooltipMessage = `Doctors cannot mark appointments as ${status}`;
+                          } else {
+                            canUpdateToStatus = true;
+                            tooltipMessage = `Mark as ${status}`;
+                          }
+                          break;
+                        case 'Nurse':
+                          // Nurses can only mark as Scheduled
+                          if (status !== 'Scheduled') {
+                            canUpdateToStatus = false;
+                            tooltipMessage = `Nurses can only mark appointments as Scheduled`;
+                          } else {
+                            canUpdateToStatus = true;
+                            tooltipMessage = `Mark as ${status}`;
+                          }
+                          break;
+                        default:
+                          canUpdateToStatus = false;
+                          tooltipMessage = `${userRole} cannot update appointment status`;
+                      }
+                      
+                      // Additional rules based on current status
+                      if (localAppointment.status === 'Completed' && status !== 'Completed') {
+                        // Only Admin can change from Completed to another status
+                        if (userRole !== 'Admin') {
+                          canUpdateToStatus = false;
+                          tooltipMessage = 'Only Admins can change from Completed status';
+                        }
+                      }
+                      
+                      // Disable button if it's the current status
+                      if (status === localAppointment.status) {
+                        canUpdateToStatus = false;
+                        tooltipMessage = 'Current status';
+                      }
+                      
+                      return (
+                        <Button
+                          key={status}
+                          variant={status === localAppointment.status ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => handleStatusUpdate(status)}
+                          disabled={isUpdatingStatus || !canUpdateToStatus}
+                          className={APPOINTMENT_STATUS_BUTTON_CLASSES[status]}
+                          title={tooltipMessage}
+                        >
+                          {status}
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

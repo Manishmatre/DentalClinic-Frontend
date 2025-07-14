@@ -11,7 +11,7 @@ const Select = forwardRef(({
   children,
   ...props
 }, ref) => {
-  const baseSelectClasses = 'block w-full rounded-lg shadow-sm transition-colors duration-200 px-2 py-2 pr-10 appearance-none bg-white';
+  const baseSelectClasses = 'block w-full rounded-lg shadow-sm border transition-colors duration-200 px-2 py-2 pr-10 appearance-none bg-white';
   const variantClasses = error
     ? 'border-red-300 text-red-900 focus:ring-red-500 focus:border-red-500 focus:ring-2'
     : 'border-gray-300 text-gray-900 focus:ring-indigo-500 focus:border-indigo-500 focus:ring-2';

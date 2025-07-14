@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'react-toastify';
 import appointmentService from '../../api/appointments/appointmentService';
-import doctorService from '../../api/staff/doctorService';
+import staffService from '../../api/staff/staffService';
 import { medicalServicesData, getFlattenedServices } from '../../data/medicalServices';
 import { formatDate } from '../../utils/dateUtils';
 import AppointmentCalendar from '../../components/appointments/AppointmentCalendar';
@@ -85,7 +85,7 @@ const PatientAppointments = ({ view = 'upcoming' }) => {
       // Fetch all data in parallel for efficiency
       const [appointmentsResponse, doctorsResponse] = await Promise.all([
         appointmentService.getAppointments(params),
-        doctorService.getDoctors({ clinicId })
+        staffService.getStaff({ role: 'Doctor', status: 'Active', clinicId })
       ]);
       
       // Process appointments data

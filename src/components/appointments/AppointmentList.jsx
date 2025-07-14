@@ -13,6 +13,8 @@ import { CSVLink } from 'react-csv';
 import { toast } from 'react-toastify';
 import AppointmentDetailsModal from './AppointmentDetailsModal';
 import { APPOINTMENT_STATUS, APPOINTMENT_STATUS_BADGE_CLASSES } from '../../constants/appointmentConstants';
+import serviceService from '../../api/services/serviceService';
+import treatmentService from '../../api/treatments';
 
 // Helper function to get status badge variant
 const getStatusVariant = (status) => {
@@ -68,6 +70,19 @@ const AppointmentList = ({
   const [itemsPerPage, setItemsPerPage] = useState(appointments.length > 0 ? appointments.length : 1000);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [serviceMap, setServiceMap] = useState({});
+
+  useEffect(() => {
+    // Fetch all treatments and build a map of ID to name
+    const fetchTreatments = async () => {
+      const result = await treatmentService.getTreatments();
+      const treatments = Array.isArray(result.data) ? result.data : [];
+      const map = {};
+      treatments.forEach(t => { map[t._id] = t.name; });
+      setServiceMap(map);
+    };
+    fetchTreatments();
+  }, []);
 
   // Apply filters and sorting
   useEffect(() => {
@@ -81,7 +96,7 @@ const AppointmentList = ({
       result = result.filter(appointment => {
         // Get patient name from different possible structures
         const patientName = 
-          (appointment.patientId && typeof appointment.patientId === 'object' && appointment.patientId.name) ||
+          (appointment.patientId && typeof appointment.patientId === 'object' && ((appointment.patientId.firstName ? appointment.patientId.firstName + ' ' : '') + (appointment.patientId.lastName || appointment.patientId.name || ''))) ||
           (appointment.patient && appointment.patient.name) ||
           (appointment.patient && appointment.patient.fullName) ||
           appointment.patientName ||
@@ -89,7 +104,7 @@ const AppointmentList = ({
         
         // Get doctor name from different possible structures
         const doctorName = 
-          (appointment.doctorId && typeof appointment.doctorId === 'object' && appointment.doctorId.name) ||
+          (appointment.doctorId && typeof appointment.doctorId === 'object' && ((appointment.doctorId.firstName ? appointment.doctorId.firstName + ' ' : '') + (appointment.doctorId.lastName || appointment.doctorId.name || ''))) ||
           (appointment.doctor && appointment.doctor.name) ||
           (appointment.doctor && appointment.doctor.fullName) ||
           appointment.doctorName ||
@@ -357,9 +372,6 @@ const AppointmentList = ({
                     {getSortIcon('startTime')}
                   </div>
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Time
-                </th>
                 <th 
                   scope="col" 
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
@@ -396,8 +408,8 @@ const AppointmentList = ({
                     Status {getSortIcon('status')}
                   </div>
                 </th>
-                <th scope="col" className="relative px-6 py-3">
-                  <span className="sr-only">Actions</span>
+                <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -411,10 +423,18 @@ const AppointmentList = ({
                       </div>
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {formatDate(appointment.startTime)}
+                          {appointment.startTime instanceof Date && !isNaN(appointment.startTime.getTime())
+                            ? formatDate(appointment.startTime)
+                            : 'N/A'}
+                          {' '}
+                          {appointment.startTime instanceof Date && !isNaN(appointment.startTime.getTime()) && appointment.endTime instanceof Date && !isNaN(appointment.endTime.getTime())
+                            ? `${formatTime(appointment.startTime)} - ${formatTime(appointment.endTime)}`
+                            : ''}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
+                          {appointment.createdAt instanceof Date && !isNaN(appointment.createdAt.getTime())
+                            ? formatDateTime(appointment.createdAt)
+                            : ''}
                         </div>
                       </div>
                     </div>
@@ -427,11 +447,10 @@ const AppointmentList = ({
                       <div>
                         <Tooltip content={`Patient ID: ${appointment.patientId?._id || appointment.patient?._id || 'Unknown'}`}>
                           <div className="text-sm font-medium text-gray-900 hover:text-blue-600">
-                            {(appointment.patientId && typeof appointment.patientId === 'object' && appointment.patientId.name) ||
-                             (appointment.patient && appointment.patient.name) ||
-                             (appointment.patient && appointment.patient.fullName) ||
-                             appointment.patientName || 'N/A'}
-                          </div>
+  {(appointment.patientId && typeof appointment.patientId === 'object')
+    ? `${appointment.patientId.firstName || ''} ${appointment.patientId.lastName || appointment.patientId.name || ''}`.trim()
+    : (appointment.patient && appointment.patient.name) || (appointment.patient && appointment.patient.fullName) || appointment.patientName || 'N/A'}
+</div>
                         </Tooltip>
                         <div className="text-xs text-gray-500">
                           {appointment.patientId?.email ? (
@@ -458,11 +477,10 @@ const AppointmentList = ({
                       <div>
                         <Tooltip content={`Doctor ID: ${appointment.doctorId?._id || appointment.doctor?._id || 'Unknown'}`}>
                           <div className="text-sm font-medium text-gray-900 hover:text-indigo-600">
-                            Dr. {(appointment.doctorId && typeof appointment.doctorId === 'object' && appointment.doctorId.name) ||
-                             (appointment.doctor && appointment.doctor.name) ||
-                             (appointment.doctor && appointment.doctor.fullName) ||
-                             appointment.doctorName || 'N/A'}
-                          </div>
+  Dr. {(appointment.doctorId && typeof appointment.doctorId === 'object')
+    ? `${appointment.doctorId.firstName || ''} ${appointment.doctorId.lastName || appointment.doctorId.name || ''}`.trim()
+    : (appointment.doctor && appointment.doctor.name) || (appointment.doctor && appointment.doctor.fullName) || appointment.doctorName || 'N/A'}
+</div>
                         </Tooltip>
                         <div className="text-xs text-gray-500">
                           {appointment.doctorId?.specialization || 'General'}
@@ -477,20 +495,8 @@ const AppointmentList = ({
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 mr-2">
-                        <FaInfoCircle className="h-5 w-5 text-green-500" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {appointment.serviceType}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {formatDateTime(appointment.createdAt || new Date())}
-                        </div>
-                      </div>
-                    </div>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {serviceMap[appointment.serviceType] || appointment.serviceType}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <Badge
@@ -501,40 +507,28 @@ const AppointmentList = ({
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end space-x-2">
-                      <Tooltip content="View appointment details">
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() => handleViewAppointment(appointment)}
-                          icon={<FaEye className="text-blue-500" />}
-                          className="border-blue-200 hover:bg-blue-50 hover:border-blue-300"
-                        />
-                      </Tooltip>
-                      
-                      {['Admin', 'Receptionist', 'Doctor'].includes(userRole) && (
-                        <Tooltip content="Edit appointment">
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            onClick={() => onEdit(appointment)}
-                            icon={<FaEdit className="text-indigo-500" />}
-                            className="border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300"
-                          />
-                        </Tooltip>
-                      )}
-                      
-                      {['Admin', 'Receptionist'].includes(userRole) && (
-                        <Tooltip content="Delete appointment">
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            onClick={() => onDelete(appointment._id)}
-                            icon={<FaTrash className="text-red-500" />}
-                            className="border-red-200 hover:bg-red-50 hover:border-red-300"
-                          />
-                        </Tooltip>
-                      )}
+                    <div className="flex justify-end space-x-3">
+                      <button
+                        onClick={() => onView(appointment)}
+                        className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center"
+                        title="View Appointment"
+                      >
+                        <FaEye size={16} />
+                      </button>
+                      <button
+                        onClick={() => onEdit(appointment)}
+                        className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center"
+                        title="Edit Appointment"
+                      >
+                        <FaEdit size={16} />
+                      </button>
+                      <button
+                        onClick={() => onDelete(appointment)}
+                        className="text-red-600 hover:text-red-900 transition-colors duration-200 flex items-center"
+                        title="Delete Appointment"
+                      >
+                        <FaTrash size={16} />
+                      </button>
                     </div>
                   </td>
                 </tr>

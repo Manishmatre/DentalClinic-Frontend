@@ -41,7 +41,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { FaPlus, FaTrash, FaUpload, FaSave, FaArrowLeft } from 'react-icons/fa';
 import ehrService from '../../api/ehr/ehrService';
 import patientService from '../../api/patients/patientService';
-import doctorService from '../../api/staff/doctorService';
+import staffService from '../../api/staff/staffService';
 import appointmentService from '../../api/appointments/appointmentService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -137,7 +137,7 @@ const MedicalRecordForm = () => {
         setPatients(patientsData);
         
         // Fetch doctors
-        const doctorsData = await doctorService.getDoctors();
+        const doctorsData = (await staffService.getStaff({ role: 'Doctor', status: 'Active' })).data || [];
         setDoctors(doctorsData);
         
         // If editing an existing record, fetch it

@@ -1,28 +1,51 @@
-import axios from 'axios';
+import client from './client';
 
-const BASE_URL = '/api/treatments';
+const TREATMENTS_URL = '/treatments';
 
-export const getTreatments = async () => {
-  const response = await axios.get(BASE_URL);
-  return response.data;
+const treatmentService = {
+  // Get all treatments
+  async getTreatments(params = {}) {
+    try {
+      const response = await client.get(TREATMENTS_URL, { params });
+        return response.data;
+    } catch (error) {
+      console.error('Error fetching treatments:', error);
+      return { data: [], pagination: { total: 0, page: 1, pages: 1, limit: params.limit || 10 } };
+    }
+  },
+
+  // Create a new treatment
+  async createTreatment(data) {
+    try {
+      const response = await client.post(TREATMENTS_URL, data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating treatment:', error);
+      throw error;
+    }
+  },
+
+  // Update a treatment
+  async updateTreatment(id, data) {
+    try {
+      const response = await client.put(`${TREATMENTS_URL}/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating treatment:', error);
+      throw error;
+    }
+  },
+
+  // Delete a treatment
+  async deleteTreatment(id) {
+    try {
+      const response = await client.delete(`${TREATMENTS_URL}/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting treatment:', error);
+      throw error;
+    }
+  }
 };
 
-export const getTreatmentById = async (id) => {
-  const response = await axios.get(`${BASE_URL}/${id}`);
-  return response.data;
-};
-
-export const createTreatment = async (data) => {
-  const response = await axios.post(BASE_URL, data);
-  return response.data;
-};
-
-export const updateTreatment = async (id, data) => {
-  const response = await axios.put(`${BASE_URL}/${id}`, data);
-  return response.data;
-};
-
-export const deleteTreatment = async (id) => {
-  const response = await axios.delete(`${BASE_URL}/${id}`);
-  return response.data;
-}; 
+export default treatmentService; 

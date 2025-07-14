@@ -6,7 +6,7 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { toast } from 'react-toastify';
 import patientService from '../../api/patients/patientService';
-import clinicService from '../../api/clinic/clinicService';
+import staffService from '../../api/staff/staffService';
 import serviceService from '../../api/clinic/serviceService';
 import Select from 'react-select';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -18,13 +18,18 @@ import {
   FaUserMd, 
   FaCalendarAlt, 
   FaClipboardList,
-  FaClock,
   FaNotesMedical,
-  FaInfoCircle
+  FaInfoCircle,
+  FaMagic
 } from 'react-icons/fa';
+import { formatAppointmentTimeRange, getClinicTimeZone } from '../../utils/timeZoneUtils';
+import smartSchedulingService from '../../services/smartSchedulingService';
+import AsyncSelect from 'react-select/async';
+import treatmentService from '../../api/treatments';
+
 // Form validation schema
 const appointmentSchema = z.object({
-  patientId: z.string().min(1, 'Patient is required'),
+  patientId: z.string().min(1, 'Patient is required').optional(),
   doctorId: z.string().min(1, 'Doctor is required'),
   startTime: z.string().refine(val => {
     const date = new Date(val);
@@ -40,7 +45,7 @@ const appointmentSchema = z.object({
     return !isNaN(date.getTime());
   }, { message: 'Invalid end date/time' }),
   serviceType: z.string().min(1, 'Service type is required'),
-  notes: z.string().optional(),
+  notes: z.string().min(1, 'Reason for Appointment is required'),
   status: z.enum(['Scheduled', 'Confirmed', 'Cancelled', 'Completed', 'No Show']).optional()
 }).refine(data => {
   const start = new Date(data.startTime);
@@ -57,23 +62,31 @@ const appointmentSchema = z.object({
 }, {
   message: "Appointment duration cannot exceed 4 hours",
   path: ["endTime"]
+}).refine(data => {
+  // Ensure patientId is provided before submission
+  return data.patientId && data.patientId.trim() !== '';
+}, {
+  message: "Please select a patient for this appointment",
+  path: ["patientId"]
 });
 
-// Mock data for fallback when API calls fail
-const MOCK_PATIENTS = [
-  { value: 'mock-patient-1', label: 'John Doe', data: { _id: 'mock-patient-1', name: 'John Doe' } },
-  { value: 'mock-patient-2', label: 'Jane Smith', data: { _id: 'mock-patient-2', name: 'Jane Smith' } },
-];
+// Remove mock data, use real API calls for patients and doctors
 
-const MOCK_DOCTORS = [
-  { value: 'mock-doctor-1', label: 'Dr. House', data: { _id: 'mock-doctor-1', name: 'Dr. House', role: 'Doctor' } },
-  { value: 'mock-doctor-2', label: 'Dr. Smith', data: { _id: 'mock-doctor-2', name: 'Dr. Smith', role: 'Doctor' } },
-];
-
-const MOCK_SERVICES = [
-  { value: 'mock-service-1', label: 'General Checkup', data: { _id: 'mock-service-1', name: 'General Checkup' } },
-  { value: 'mock-service-2', label: 'Dental Cleaning', data: { _id: 'mock-service-2', name: 'Dental Cleaning' } },
-];
+// Helper to format date for datetime-local input in a specific time zone
+const formatDateTimeLocal = (date, timeZone) => {
+  if (!date) return '';
+  try {
+    const tzDate = new Date(date.toLocaleString('en-US', { timeZone }));
+    const year = tzDate.getFullYear();
+    const month = String(tzDate.getMonth() + 1).padStart(2, '0');
+    const day = String(tzDate.getDate()).padStart(2, '0');
+    const hours = String(tzDate.getHours()).padStart(2, '0');
+    const minutes = String(tzDate.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  } catch {
+    return date instanceof Date ? date.toISOString().substring(0, 16) : '';
+  }
+};
 
 const AppointmentForm = ({ 
   onSubmit, 
@@ -83,48 +96,111 @@ const AppointmentForm = ({
   clinicId: propClinicId,
   onClose
 }) => {
+
   // State for active tab
   const [activeTab, setActiveTab] = useState('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+  const [recentPatients, setRecentPatients] = useState([]); // NEW
+  const [recentDoctors, setRecentDoctors] = useState([]); // NEW
+
+  // Add state for conflict checking and warning (moved to top)
+  const [checkingConflict, setCheckingConflict] = useState(false);
+  const [conflictWarning, setConflictWarning] = useState(null);
+
   // Get clinic ID from auth context if not provided as prop
   const { clinic, user } = useAuth();
-  
-  // Check if we have a valid clinic ID from the auth context
-  let clinicId = null;
-  
-  // Process the clinic ID with multiple fallbacks
-  if (clinic && clinic.id) {
-    // If clinic object has an id property
-    clinicId = clinic.id;
-    console.log('Using clinic.id from auth context:', clinicId);
-  } else if (clinic && clinic._id) {
-    // If clinic object has an _id property
-    clinicId = clinic._id;
-    console.log('Using clinic._id from auth context:', clinicId);
-  } else if (propClinicId) {
-    // If clinic ID was passed as a prop - handle object or string
-    if (typeof propClinicId === 'object' && propClinicId._id) {
-      clinicId = propClinicId._id;
-      console.log('Using clinicId._id from props:', clinicId);
-    } else if (typeof propClinicId === 'object' && propClinicId.id) {
-      clinicId = propClinicId.id;
-      console.log('Using clinicId.id from props:', clinicId);
-    } else if (typeof propClinicId === 'string') {
-      clinicId = propClinicId;
-      console.log('Using clinicId string from props:', clinicId);
+
+  // State for clinic ID to ensure it updates when initialData changes
+  const [clinicId, setClinicId] = useState(null);
+
+  // Update clinic ID when initialData or other dependencies change
+  useEffect(() => {
+    let newClinicId = null;
+    
+    // ALWAYS use the current user's clinic ID from auth context for consistency
+    if (user && user.clinicId) {
+      newClinicId = typeof user.clinicId === 'object' ? user.clinicId._id : user.clinicId;
+      console.log('Using user.clinicId from auth context:', newClinicId);
+    } else if (clinic && clinic._id) {
+      newClinicId = clinic._id;
+      console.log('Using clinic._id from auth context:', newClinicId);
+    } else if (clinic && clinic.id) {
+      newClinicId = clinic.id;
+      console.log('Using clinic.id from auth context:', newClinicId);
+    } else if (propClinicId) {
+      // Fallback to props only if no auth context available
+      newClinicId = propClinicId;
+      console.log('Using clinicId from props (fallback):', newClinicId);
     } else {
-      console.warn('Invalid clinicId prop format:', propClinicId);
+      // No clinicId found, log error for debugging
+      console.error('[AppointmentForm] No clinicId found in user, clinic, or props', { user, clinic, propClinicId });
     }
-  }
-  
+
+    // Debug log all context for troubleshooting
+    console.warn('[AppointmentForm] ClinicId resolution context:', {
+      user,
+      clinic,
+      propClinicId,
+      resolved: newClinicId
+    });
+
+    setClinicId(newClinicId);
+  }, [user, clinic, propClinicId]);
+
+  // Prevent form submission if clinicId is missing
+  // if (!clinicId) {
+  //   return (
+  //     <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mt-4">
+  //       <strong className="font-bold">Error:</strong>
+  //       <span className="block sm:inline ml-2">No clinic ID found. Cannot create appointment. Please check your login, user profile, and clinic assignment.</span>
+  //     </div>
+  //   );
+  // }
+
+  // --- DO NOT RETURN EARLY BEFORE HOOKS ---
+  // Place the early return for missing clinicId BELOW all hooks
+
+  // ... (all hooks, useEffect, useForm, etc. must be called here, unconditionally)
+
+  // ... (all hooks, useEffect, useForm, etc. must be called here, unconditionally)
+
+  // All hooks must be called here, unconditionally, before any return or conditional logic
+
+  // Fetch recent patients on mount
+  useEffect(() => {
+    if (!clinicId) return;
+    patientService.getPatients({ clinicId, limit: 10, sort: '-createdAt' }).then(res => {
+      const options = (res.data || []).map(p => ({
+        value: p._id,
+        label: p.name || (p.firstName + ' ' + p.lastName),
+        data: p
+      }));
+      setRecentPatients(options);
+    });
+  }, [clinicId]);
+
+  // ... all other useEffect, useState, useForm, etc. hooks ...
+
+  // Place this block just before your main return statement (AFTER all hooks):
+
+
+
+
+
+  // Fetch recent patients on mount
+  useEffect(() => {
+    if (!clinicId) return;
+    patientService.getPatients({ clinicId, limit: 10, sort: '-createdAt' }).then(res => {
+      const options = (res.data || []).map(p => ({
+        value: p._id,
+        label: p.name || (p.firstName + ' ' + p.lastName),
+        data: p
+      }));
+      setRecentPatients(options);
+    });
+  }, [clinicId]);
+
   console.log('Initial clinicId check:', { propClinicId, clinicFromAuth: clinic?.id || clinic?._id, clinicId });
-  
-  // If we still don't have a clinicId, check if it's in the initialData
-  if (!clinicId && initialData && initialData.clinicId) {
-    clinicId = initialData.clinicId;
-    console.log('Using clinicId from initialData:', clinicId);
-  }
   
   // Check if we have a valid auth token
   const authToken = localStorage.getItem('authToken');
@@ -140,8 +216,12 @@ const AppointmentForm = ({
   const [services, setServices] = useState([]);
   const [isLoading2, setIsLoading2] = useState(true);
   const [fetchError, setFetchError] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [timeZone, setTimeZone] = useState(getClinicTimeZone(initialData?.clinic));
   
   // Form validation and state
+  const formTimeZone = initialData?.timeZone || timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const {
     control,
     handleSubmit,
@@ -155,8 +235,8 @@ const AppointmentForm = ({
     defaultValues: {
       patientId: initialData?.patientId || '',
       doctorId: initialData?.doctorId || '',
-      startTime: initialData?.startTime ? new Date(initialData.startTime).toISOString().substring(0, 16) : '',
-      endTime: initialData?.endTime ? new Date(initialData.endTime).toISOString().substring(0, 16) : '',
+      startTime: initialData?.startTime ? formatDateTimeLocal(new Date(initialData.startTime), formTimeZone) : '',
+      endTime: initialData?.endTime ? formatDateTimeLocal(new Date(initialData.endTime), formTimeZone) : '',
       serviceType: initialData?.serviceType || '',
       notes: initialData?.notes || '',
       status: initialData?.status || 'Scheduled'
@@ -199,10 +279,10 @@ const AppointmentForm = ({
         
         // Fetch all data in parallel for efficiency
         console.log('Fetching appointment form data for clinic:', clinicId);
-        const [patientsResponse, doctorsResponse, servicesResponse] = await Promise.all([
-          patientService.getPatients({ clinicId }),
-          clinicService.getStaffByRole('Doctor', clinicId),
-          serviceService.getServices({ clinicId })
+        const [patientsResponse, staffResponse, treatmentsResponse] = await Promise.all([
+          patientService.getPatients({ clinicId, status: 'active' }),
+          staffService.getStaff({ clinic: clinicId, role: 'Doctor', status: 'Active', limit: 100 }),
+          treatmentService.getTreatments({ clinicId })
         ]);
         
         // Process patient data
@@ -211,7 +291,7 @@ const AppointmentForm = ({
           console.log(`Loaded ${patientsData.length} patients`);
           const patientOptions = patientsData.map(patient => ({
             value: patient._id,
-            label: `${patient.name || 'Unknown'} ${patient.email ? `(${patient.email})` : ''}`,
+            label: `${patient.name || 'Unknown'}${patient.email ? ` (${patient.email})` : ''}`,
             data: patient
           }));
           setPatients(patientOptions);
@@ -221,8 +301,9 @@ const AppointmentForm = ({
           setPatients([]);
         }
         
-        // Process doctor data
-        const doctorsData = Array.isArray(doctorsResponse) ? doctorsResponse : (doctorsResponse?.data || []);
+        // Debug: log staff response to inspect structure
+        console.log('Staff API response:', staffResponse);
+        const doctorsData = Array.isArray(staffResponse?.data) ? staffResponse.data : [];
         if (doctorsData.length > 0) {
           console.log(`Loaded ${doctorsData.length} doctors`);
           const doctorOptions = doctorsData.map(doctor => ({
@@ -231,81 +312,37 @@ const AppointmentForm = ({
             data: doctor
           }));
           setDoctors(doctorOptions);
+          setRecentDoctors(doctorOptions);
         } else {
           console.warn('No doctors found in your clinic');
           setFetchError(prevError => prevError ? `${prevError}. No doctors found.` : 'No doctors found. Please add doctors first.');
           setDoctors([]);
         }
         
-        // Process service data
-        const servicesData = Array.isArray(servicesResponse) ? servicesResponse : (servicesResponse?.data || []);
-        
-        // Use our comprehensive medical services list if no services found in the database
-        if (servicesData.length > 0) {
-          console.log(`Loaded ${servicesData.length} services from database`);
-          
-          // Group services by category
-          const servicesByCategory = servicesData.reduce((acc, service) => {
-            const category = service.category || 'Other';
-            if (!acc[category]) {
-              acc[category] = [];
-            }
-            acc[category].push(service);
+        // Process services
+        const treatmentsData = Array.isArray(treatmentsResponse.data) ? treatmentsResponse.data : [];
+        if (treatmentsData.length > 0) {
+          const servicesByCategory = treatmentsData.reduce((acc, treatment) => {
+            const category = treatment.category || 'Other';
+            if (!acc[category]) acc[category] = [];
+            acc[category].push(treatment);
             return acc;
           }, {});
-          
-          // Create grouped options for the select input with clean labels
           const serviceOptions = Object.keys(servicesByCategory).map(category => ({
             label: category,
-            options: servicesByCategory[category].map(service => ({
-              value: service._id,
-              // Clean label showing just the service name for better readability
-              label: service.name || 'Service',
-              // Store all service data for reference
-              data: service
+            options: servicesByCategory[category].map(treatment => ({
+              value: treatment._id,
+              label: treatment.name || 'Service',
+              data: treatment
             }))
           }));
-          
           setServices(serviceOptions);
         } else {
-          console.log('No services found in database, using comprehensive medical services list');
-          
-          // Create service options from our comprehensive medical services list
-          const serviceOptions = Object.keys(medicalServicesData).map(category => ({
-            label: category,
-            options: medicalServicesData[category].map((serviceName, index) => ({
-              value: `${category.toLowerCase().replace(/\s+/g, '-')}-${index}`,
-              label: serviceName,
-              data: {
-                _id: `${category.toLowerCase().replace(/\s+/g, '-')}-${index}`,
-                name: serviceName,
-                category: category,
-                description: `${serviceName} service`,
-                duration: 30, // Default duration in minutes
-                price: 0 // Default price
-              }
-            }))
-          }));
-          
-          setServices(serviceOptions);
-        }
-        
-        // Check if we have all required data to create appointments
-        const errors = [];
-        if (patientsData.length === 0) errors.push('No patients found');
-        if (doctorsData.length === 0) errors.push('No doctors found');
-        // We don't need to check for services anymore since we have our comprehensive list
-        
-        if (errors.length > 0) {
-          const errorMessage = `Cannot create appointment: ${errors.join('. ')}. Please add the missing data first.`;
-          setFetchError(errorMessage);
-        } else {
-          setFetchError(null);
+          setServices([]);
         }
       } catch (error) {
         console.error('Error fetching form data:', error);
         setFetchError('Failed to load form data. Please refresh and try again.');
-        // Do not use mock data as it causes validation errors
         setPatients([]);
         setDoctors([]);
         setServices([]);
@@ -322,68 +359,40 @@ const AppointmentForm = ({
     if (initialData) {
       console.log('Setting form values from initialData:', initialData);
       
-      // Set basic form fields
-      setValue('patientId', initialData.patientId || '');
-      setValue('doctorId', initialData.doctorId || '');
-      setValue('serviceType', initialData.serviceType || '');
-      setValue('notes', initialData.notes || '');
-      setValue('status', initialData.status || 'Scheduled');
-      
-      // Format dates for datetime-local input
+      // Debug time processing
       if (initialData.startTime) {
-        // Convert to proper date object if it's not already
         const startDate = new Date(initialData.startTime);
-        console.log('Setting start time:', startDate);
-        
-        try {
-          // Format for datetime-local input (YYYY-MM-DDTHH:MM)
-          // Handle timezone issues by using local timezone format
-          const year = startDate.getFullYear();
-          const month = String(startDate.getMonth() + 1).padStart(2, '0');
-          const day = String(startDate.getDate()).padStart(2, '0');
-          const hours = String(startDate.getHours()).padStart(2, '0');
-          const minutes = String(startDate.getMinutes()).padStart(2, '0');
-          
-          const formattedStartDate = `${year}-${month}-${day}T${hours}:${minutes}`;
-          setValue('startTime', formattedStartDate);
-          console.log('Formatted start time for input:', formattedStartDate);
-        } catch (error) {
-          console.error('Error formatting start date:', error);
-          // Fallback to ISO string method
-          const formattedStartDate = startDate.toISOString().substring(0, 16);
-          setValue('startTime', formattedStartDate);
-        }
+        const formattedStart = formatDateTimeLocal(startDate, formTimeZone);
+        console.log('Start time processing:', {
+          original: initialData.startTime,
+          parsed: startDate.toISOString(),
+          formatted: formattedStart,
+          timeZone: formTimeZone
+        });
       }
       
       if (initialData.endTime) {
-        // Convert to proper date object if it's not already
         const endDate = new Date(initialData.endTime);
-        console.log('Setting end time:', endDate);
-        
-        try {
-          // Format for datetime-local input (YYYY-MM-DDTHH:MM)
-          // Handle timezone issues by using local timezone format
-          const year = endDate.getFullYear();
-          const month = String(endDate.getMonth() + 1).padStart(2, '0');
-          const day = String(endDate.getDate()).padStart(2, '0');
-          const hours = String(endDate.getHours()).padStart(2, '0');
-          const minutes = String(endDate.getMinutes()).padStart(2, '0');
-          
-          const formattedEndDate = `${year}-${month}-${day}T${hours}:${minutes}`;
-          setValue('endTime', formattedEndDate);
-          console.log('Formatted end time for input:', formattedEndDate);
-        } catch (error) {
-          console.error('Error formatting end date:', error);
-          // Fallback to ISO string method
-          const formattedEndDate = endDate.toISOString().substring(0, 16);
-          setValue('endTime', formattedEndDate);
-        }
+        const formattedEnd = formatDateTimeLocal(endDate, formTimeZone);
+        console.log('End time processing:', {
+          original: initialData.endTime,
+          parsed: endDate.toISOString(),
+          formatted: formattedEnd,
+          timeZone: formTimeZone
+        });
       }
+      
+      // Set basic form fields
+      setValue('patientId', initialData.patientId || '');
+      setValue('doctorId', initialData.doctorId || '');
+      setValue('startTime', initialData.startTime ? formatDateTimeLocal(new Date(initialData.startTime), formTimeZone) : '');
+      setValue('endTime', initialData.endTime ? formatDateTimeLocal(new Date(initialData.endTime), formTimeZone) : '');
+      setValue('serviceType', initialData.serviceType || '');
+      setValue('notes', initialData.notes || '');
+      setValue('status', initialData.status || 'Scheduled');
     }
-  }, [initialData, setValue]);
+  }, [initialData, setValue, formTimeZone]);
   
-
-
   // Auto-calculate end time when a service is selected
   const handleServiceChange = (option) => {
     console.log('Service selected:', option);
@@ -564,171 +573,59 @@ const AppointmentForm = ({
       return { isValid: false, message: errorMessages };
     }
     
-    return { isValid: true };
+    return { isValid: true, message: null };
   };
 
   // Handle form submission
+  const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(id);
   const handleFormSubmit = async (data) => {
-    try {
-      setIsSubmitting(true);
-      
-      // Run custom validation first
-      const validation = validateForm();
-      if (!validation.isValid) {
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // Validate required selections
-      const validationErrors = [];
-      
-      // Get the selected items with detailed logging
-      console.log('Finding patient with ID:', data.patientId);
-      console.log('Available patients:', patients);
-      const selectedPatient = patients.find(p => p.value === data.patientId);
-      console.log('Selected patient:', selectedPatient);
-      
-      console.log('Finding doctor with ID:', data.doctorId);
-      console.log('Available doctors:', doctors);
-      const selectedDoctor = doctors.find(d => d.value === data.doctorId);
-      console.log('Selected doctor:', selectedDoctor);
-      
-      // Handle grouped services - search through all groups
-      console.log('Finding service with ID:', data.serviceType);
-      console.log('Available services:', services);
-      let selectedService = null;
-      
-      if (services && services.length > 0) {
-        // Check if services is grouped (has options property)
-        if (services[0].options) {
-          console.log('Services are grouped, searching through groups');
-          // Search through each group's options
-          for (const group of services) {
-            if (group.options) {
-              const found = group.options.find(option => option.value === data.serviceType);
-              if (found) {
-                selectedService = found;
-                console.log('Found service in group:', group.label);
-                break;
-              }
-            }
-          }
-        } else {
-          // Not grouped, direct search
-          console.log('Services are not grouped, direct search');
-          selectedService = services.find(s => s.value === data.serviceType);
-        }
-      }
-      
-      console.log('Selected service:', selectedService);
-      
-      // Check each selection individually for better error messages
-      if (!data.patientId || !selectedPatient) {
-        validationErrors.push('Please select a valid patient');
-      }
-      if (!data.doctorId || !selectedDoctor) {
-        validationErrors.push('Please select a valid doctor');
-      }
-      if (!data.serviceType || !selectedService) {
-        validationErrors.push('Please select a valid service');
-      }
-      
-      // Show all validation errors if any
-      if (validationErrors.length > 0) {
-        toast.error(
-          <div>
-            <strong>Please fix the following errors:</strong>
-            <ul className="mt-1 pl-4 list-disc">
-              {validationErrors.map((error, index) => (
-                <li key={index}>{error}</li>
-              ))}
-            </ul>
-          </div>,
-          { autoClose: 5000 }
-        );
-        setIsSubmitting(false);
-        return;
-      }
+    // Additional validation before submission
+    if (!data.patientId || data.patientId.trim() === '') {
+      toast.error('Please select a patient for this appointment');
+      return;
+    }
+    
+    if (!data.doctorId || data.doctorId.trim() === '') {
+      toast.error('Please select a doctor for this appointment');
+      return;
+    }
+    
+    if (!data.serviceType || data.serviceType.trim() === '') {
+      toast.error('Please select a service type for this appointment');
+      return;
+    }
+    
+    if (!data.notes || data.notes.trim() === '') {
+      toast.error('Please provide a reason for the appointment');
+      return;
+    }
 
-      // Format dates properly with timezone handling
-      const startTime = new Date(data.startTime);
-      const endTime = new Date(data.endTime);
-      
-      console.log('Original date objects:', { startTime, endTime });
-      
-      // Create formatted data object - IMPORTANT: Use the actual IDs, not the value properties
-      const formattedData = {
-        patientId: selectedPatient?.value || data.patientId,
-        doctorId: selectedDoctor?.value || data.doctorId,
-        clinicId: clinicId,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        serviceType: selectedService.value,
-        notes: data.notes || '',
-        status: data.status || 'Scheduled',
-        // Add the required reason field - use service type or notes as fallback
-        reason: data.notes || selectedService.label || 'Medical appointment'
-      };
-      
-      console.log('Patient ID being sent:', formattedData.patientId);
-      console.log('Doctor ID being sent:', formattedData.doctorId);
-      
-      // Add service name if available
-      if (selectedService && selectedService.data) {
-        formattedData.serviceName = selectedService.data.name;
-      } else if (selectedService) {
-        formattedData.serviceName = selectedService.label;
-      }
-      
-      // Add patient and doctor names for display purposes
-      if (selectedPatient && (selectedPatient.data?.name || selectedPatient.label)) {
-        formattedData.patientName = selectedPatient.data?.name || selectedPatient.label;
-      }
-      
-      if (selectedDoctor && (selectedDoctor.data?.name || selectedDoctor.label)) {
-        formattedData.doctorName = selectedDoctor.data?.name || selectedDoctor.label;
-      }
-      
-      console.log('Submitting appointment data:', formattedData);
-      
-      // Submit the form
-      await onSubmit(formattedData);
-      
-      // Show success message with appointment details
-      const formattedStartTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const formattedDate = startTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-      
-      toast.success(
-        <div>
-          <strong>Appointment created successfully!</strong>
-          <p>Date: {formattedDate}</p>
-          <p>Time: {formattedStartTime}</p>
-          <p>Patient: {selectedPatient.label}</p>
-          <p>Doctor: {selectedDoctor.label}</p>
-        </div>,
-        { autoClose: 5000 }
-      );
-      
-      // Reset form if creating a new appointment
-      if (!initialData) {
-        reset();
-      }
-      
-      // Close the form if onClose is provided
-      if (onClose) {
-        onClose();
-      }
-    } catch (error) {
-      console.error('Error submitting appointment form:', error);
-      toast.error(
-        <div>
-          <strong>Failed to save appointment</strong>
-          <p>{error.message || 'Please try again.'}</p>
-        </div>,
-        { autoClose: 5000 }
-      );
-    } finally {
-      setIsSubmitting(false);
+    // Ensure patientId and doctorId are always string IDs
+    let patientId = data.patientId;
+    if (typeof patientId === 'object' && patientId !== null) {
+      patientId = patientId._id || patientId.value || '';
+    }
+    let doctorId = data.doctorId;
+    if (typeof doctorId === 'object' && doctorId !== null) {
+      doctorId = doctorId._id || doctorId.value || '';
+    }
+
+    // Always include reason in the payload
+    const payload = {
+      ...data,
+      patientId,
+      doctorId,
+      notes: data.notes, // Keep notes as notes for backend
+      reason: data.notes || data.serviceType || 'Medical appointment',
+      serviceType: typeof data.serviceType === 'object' ? data.serviceType.label : data.serviceType, // Use label if using react-select
+      clinicId: clinicId // Use the clinic ID from the form's state
+    };
+    
+    console.log('Submitting appointment with clinic ID:', clinicId);
+    
+    // Submit payload as before
+    if (onSubmit) {
+      await onSubmit(payload);
     }
   };
 
@@ -774,6 +671,282 @@ const AppointmentForm = ({
     { id: 'schedule', label: 'Schedule', icon: <FaCalendarAlt className="mr-2" /> },
     { id: 'details', label: 'Details', icon: <FaClipboardList className="mr-2" /> }
   ];
+
+  // Add this function to get smart suggestions
+  const getSmartSuggestions = async () => {
+    try {
+      const suggestions = await smartSchedulingService.getSuggestions({
+        doctorId: watchedValues.doctorId,
+        patientId: watchedValues.patientId,
+        preferredDate: watchedValues.startTime,
+        preferredTime: watchedValues.startTime,
+        duration: 30,
+        timeZone,
+        businessHours: initialData?.clinic?.businessHours
+      });
+      
+      setSuggestions(suggestions);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error('Error getting suggestions:', error);
+      toast.error('Failed to get appointment suggestions');
+    }
+  };
+
+  // Add this function to handle suggestion selection
+  const handleSuggestionSelect = (suggestion) => {
+    setValue('startTime', suggestion.start);
+    setValue('endTime', suggestion.end);
+    setShowSuggestions(false);
+  };
+
+  // Update the time input fields to show time zone
+  const renderTimeInputs = () => (
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+        <p className="text-sm text-blue-800">
+          <FaInfoCircle className="inline mr-1" />
+          Appointments can only be scheduled between 8:00 AM and 6:00 PM
+        </p>
+      </div>
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          Start Time ({formTimeZone})
+        </label>
+        <input
+          type="datetime-local"
+          name="startTime"
+          value={watch('startTime')}
+          onChange={(e) => {
+            setValue('startTime', e.target.value);
+            handleStartTimeChange(e);
+          }}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          End Time ({formTimeZone})
+        </label>
+        <input
+          type="datetime-local"
+          name="endTime"
+          value={watch('endTime')}
+          onChange={(e) => {
+            setValue('endTime', e.target.value);
+            handleStartTimeChange(e);
+          }}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+        </div>
+      </div>
+    </div>
+  );
+
+  // Add suggestions section
+  const renderSuggestions = () => (
+    showSuggestions && suggestions.length > 0 && (
+      <div className="mt-4">
+        <h3 className="text-lg font-medium text-gray-900">Suggested Times</h3>
+        <div className="mt-2 space-y-2">
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={index}
+              onClick={() => handleSuggestionSelect(suggestion)}
+              className="w-full text-left p-3 bg-white border rounded-lg hover:bg-gray-50"
+            >
+              <div className="flex justify-between items-center">
+                <span>
+                  {formatAppointmentTimeRange(suggestion.start, suggestion.end, formTimeZone)}
+                </span>
+                <span className="text-sm text-gray-500">
+                  Score: {suggestion.score}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  );
+
+  // Add smart scheduling button
+  const renderSmartSchedulingButton = () => (
+    watchedValues.doctorId && watchedValues.patientId && (
+      <button
+        type="button"
+        onClick={getSmartSuggestions}
+        className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+      >
+        <FaMagic className="mr-2" />
+        Get Smart Suggestions
+      </button>
+    )
+  );
+
+  // Conflict check on time/doctor change
+  useEffect(() => {
+    const checkConflict = async () => {
+      if (!watchedValues.startTime || !watchedValues.endTime || !watchedValues.doctorId) return;
+      setCheckingConflict(true);
+      setConflictWarning(null);
+      try {
+        const res = await smartSchedulingService.checkConflict({
+          doctorId: watchedValues.doctorId,
+          startTime: watchedValues.startTime,
+          endTime: watchedValues.endTime,
+          appointmentId: initialData?._id
+        });
+        if (res.conflict) {
+          setConflictWarning(res.message || 'This time slot is already booked.');
+        }
+      } catch (e) {
+        setConflictWarning('Could not check for conflicts.');
+      } finally {
+        setCheckingConflict(false);
+      }
+    };
+    checkConflict();
+  }, [watchedValues.startTime, watchedValues.endTime, watchedValues.doctorId]);
+
+  // Update async load options for patients
+  const loadPatientOptions = async (inputValue) => {
+    if (!inputValue) {
+      console.log('[PatientDropdown] No inputValue, returning recentPatients:', recentPatients);
+      return recentPatients;
+    }
+    try {
+      const params = { search: inputValue, clinicId, limit: 20 };
+      console.log('[PatientDropdown] Fetching patients with params:', params);
+      const res = await patientService.getPatients(params);
+      console.log('[PatientDropdown] Raw API response:', res);
+      const patients = Array.isArray(res?.data) ? res.data : [];
+      console.log('[PatientDropdown] Patients array after API:', patients);
+      const mapped = patients.map(p => ({
+        value: p._id,
+        label: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim(),
+        data: p
+      }));
+      console.log('[PatientDropdown] Mapped patient options:', mapped);
+      return mapped;
+    } catch (err) {
+      console.error('[PatientDropdown] Error loading patients:', err);
+      return [];
+    }
+  };
+
+  // Update async load options for doctors
+  const loadDoctorOptions = async (inputValue) => {
+    if (!inputValue) {
+      console.log('[DoctorDropdown] No inputValue, returning recentDoctors:', recentDoctors);
+      return recentDoctors;
+    }
+    try {
+      const params = { clinicId, role: 'Doctor', status: 'active' };
+      if (inputValue) params.search = inputValue;
+      console.log('[DoctorDropdown] Fetching doctors with params:', params);
+      const res = await staffService.getStaff(params);
+      console.log('[DoctorDropdown] Raw API response:', res);
+      const staffArray = Array.isArray(res?.data) ? res.data : [];
+      console.log('[DoctorDropdown] Staff array after API:', staffArray);
+      const doctors = staffArray.filter(staff => {
+        const role = staff.role || staff.type || '';
+        return typeof role === 'string' && role.toLowerCase() === 'doctor';
+      });
+      console.log('[DoctorDropdown] Filtered doctors:', doctors);
+      const mapped = doctors.map(d => ({
+        value: d._id,
+        label: d.name || `${d.firstName || ''} ${d.lastName || ''}`.trim(),
+        data: d
+      }));
+      console.log('[DoctorDropdown] Mapped doctor options:', mapped);
+      return mapped;
+    } catch (err) {
+      console.error('[DoctorDropdown] Error loading doctors:', err);
+      return [];
+    }
+  };
+
+  const loadServiceOptions = async (inputValue) => {
+    try {
+      // Use getServices for all, filter on client if needed
+      const allServices = await serviceService.getServices({ clinicId });
+      let filtered = allServices;
+      if (inputValue) {
+        filtered = allServices.filter(s => s.name && s.name.toLowerCase().includes(inputValue.toLowerCase()));
+      }
+      return filtered.map(s => ({ value: s._id, label: s.name, data: s }));
+    } catch {
+      return [];
+    }
+  };
+
+  // If no services exist or fetchError is about services, use mock services as fallback
+  let effectiveServices = services;
+  if (services.length === 0 || (fetchError && fetchError.toLowerCase().includes('service'))) {
+    effectiveServices = Object.keys(medicalServicesData).map(category => ({
+      label: category,
+      options: medicalServicesData[category].map((serviceName, index) => ({
+        value: `${category.toLowerCase().replace(/\s+/g, '-')}-${index}`,
+        label: serviceName,
+        data: {
+          _id: `${category.toLowerCase().replace(/\s+/g, '-')}-${index}`,
+          name: serviceName,
+          category: category,
+          description: `${serviceName} service`,
+          duration: 30, // Default duration in minutes
+          price: 0 // Default price
+        }
+      }))
+    }));
+  }
+
+  // If still no services, show a message and a button to seed default services (admin only)
+  if (effectiveServices.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8">
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gray-700 mb-2">No services found for this clinic.</p>
+          <p className="text-gray-500 mb-4">You must add at least one service before you can create appointments.</p>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={async () => {
+              try {
+                await serviceService.seedDefaultServices();
+                toast.success('Default services added!');
+                // Refetch services
+                const newServices = await serviceService.getServices({ clinicId });
+                const servicesData = Array.isArray(newServices) ? newServices : (newServices?.data || []);
+                if (servicesData.length > 0) {
+                  const servicesByCategory = servicesData.reduce((acc, service) => {
+                    const category = service.category || 'Other';
+                    if (!acc[category]) acc[category] = [];
+                    acc[category].push(service);
+                    return acc;
+                  }, {});
+                  const serviceOptions = Object.keys(servicesByCategory).map(category => ({
+                    label: category,
+                    options: servicesByCategory[category].map(service => ({
+                      value: service._id,
+                      label: service.name || 'Service',
+                      data: service
+                    }))
+                  }));
+                  setServices(serviceOptions);
+                }
+              } catch (err) {
+                toast.error('Failed to add default services.');
+              }
+            }}
+          >
+            Add Default Services
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Loading and error states
   if (isLoading2) {
@@ -858,10 +1031,10 @@ const AppointmentForm = ({
               name="patientId"
               control={control}
               render={({ field }) => (
-                <Select
+                <AsyncSelect
                   inputId="patientId"
                   options={patients}
-                  value={findInitialValue(patients, field.value)}
+                  value={findInitialValue(patients, field.value) || findInitialValue(recentPatients, field.value)}
                   onChange={(option) => field.onChange(option ? option.value : '')}
                   placeholder="Search for a patient..."
                   isClearable
@@ -869,6 +1042,8 @@ const AppointmentForm = ({
                   styles={customSelectStyles}
                   className={errors.patientId ? 'react-select-error' : ''}
                   noOptionsMessage={() => "No patients found"}
+                  loadOptions={loadPatientOptions}
+                  defaultOptions={recentPatients}
                 />
               )}
             />
@@ -884,10 +1059,10 @@ const AppointmentForm = ({
               name="doctorId"
               control={control}
               render={({ field }) => (
-                <Select
+                <AsyncSelect
                   inputId="doctorId"
                   options={doctors}
-                  value={findInitialValue(doctors, field.value)}
+                  value={findInitialValue(doctors, field.value) || findInitialValue(recentDoctors, field.value)}
                   onChange={(option) => field.onChange(option ? option.value : '')}
                   placeholder="Search for a doctor..."
                   isClearable
@@ -895,6 +1070,9 @@ const AppointmentForm = ({
                   styles={customSelectStyles}
                   className={errors.doctorId ? 'react-select-error' : ''}
                   noOptionsMessage={() => "No doctors found"}
+                  loadOptions={loadDoctorOptions}
+                  defaultOptions={recentDoctors}
+
                 />
               )}
             />
@@ -903,68 +1081,27 @@ const AppointmentForm = ({
           
           {/* Service Type */}
           <div className="mb-4">
-            <label htmlFor="serviceType" className="flex items-center text-sm font-medium text-gray-700 mb-1">
-              <FaNotesMedical className="text-gray-400 mr-2" /> Service Type
-            </label>
+            <label className="block text-sm font-medium text-gray-700">Service <span className="text-red-500">*</span></label>
             <Controller
               name="serviceType"
               control={control}
               render={({ field }) => (
                 <Select
-                  inputId="serviceType"
-                  options={services}
-                  value={findInitialValue(services, field.value, true)}
-                  onChange={handleServiceChange}
-                  placeholder="Select a service..."
+                  {...field}
+                  options={effectiveServices}
                   isClearable
                   isSearchable
-                  formatOptionLabel={(option) => (
-                    <div className="flex flex-col">
-                      <div className="font-medium">{option.label}</div>
-                      {option.data && (
-                        <div className="text-xs text-gray-500 flex justify-between">
-                          {option.data.duration && (
-                            <span>Duration: {option.data.duration} min</span>
-                          )}
-                          {option.data.price && (
-                            <span className="ml-2">Price: ${option.data.price}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  styles={{
-                    ...customSelectStyles,
-                    // Add styling for group headers
-                    group: (base) => ({
-                      ...base,
-                      paddingTop: 8,
-                      paddingBottom: 8,
-                    }),
-                    groupHeading: (base) => ({
-                      ...base,
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      color: '#4b5563',
-                      textTransform: 'none',
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#f3f4f6',
-                      borderRadius: '0.25rem',
-                      marginBottom: '0.5rem'
-                    }),
-                    option: (provided, state) => ({
-                      ...provided,
-                      backgroundColor: state.isSelected ? '#6366F1' : state.isFocused ? '#E2E8F0' : provided.backgroundColor,
-                      color: state.isSelected ? 'white' : provided.color,
-                      padding: '8px 12px',
-                    })
+                  placeholder="Select a service"
+                  value={findInitialValue(effectiveServices, field.value, true)}
+                  onChange={option => {
+                    field.onChange(option ? option.value : '');
+                    handleServiceChange(option);
                   }}
-                  className={errors.serviceType ? 'react-select-error' : ''}
-                  noOptionsMessage={() => "No services found"}
+                  styles={customSelectStyles}
                 />
               )}
             />
-            {errors.serviceType && <p className="mt-1 text-sm text-red-600">{errors.serviceType.message}</p>}
+            {errors.serviceType && <span className="text-red-500 text-xs">{errors.serviceType.message}</span>}
           </div>
         </div>
       )}
@@ -976,56 +1113,9 @@ const AppointmentForm = ({
             <h3 className="text-lg font-medium">Appointment Schedule</h3>
           </div>
           
-          {/* Date and Time */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor="startTime" className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                <FaClock className="text-gray-400 mr-2" /> Start Time
-              </label>
-              <Controller
-                name="startTime"
-                control={control}
-                render={({ field }) => (
-                  <Input
-                    id="startTime"
-                    type="datetime-local"
-                    {...field}
-                    onChange={(e) => {
-                      field.onChange(e);
-                      handleStartTimeChange(e);
-                    }}
-                    className={errors.startTime ? 'border-red-500' : ''}
-                    min={new Date().toISOString().substring(0, 16)}
-                    onFocus={(e) => {
-                      // Ensure the min attribute is always up-to-date when the field is focused
-                      e.target.min = new Date().toISOString().substring(0, 16);
-                    }}
-                  />
-                )}
-              />
-              {errors.startTime && <p className="mt-1 text-sm text-red-600">{errors.startTime.message}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="endTime" className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                <FaClock className="text-gray-400 mr-2" /> End Time
-              </label>
-              <Controller
-                name="endTime"
-                control={control}
-                render={({ field }) => (
-                  <Input
-                    id="endTime"
-                    type="datetime-local"
-                    {...field}
-                    className={errors.endTime ? 'border-red-500' : ''}
-                    min={watch('startTime') || new Date().toISOString().substring(0, 16)}
-                  />
-                )}
-              />
-              {errors.endTime && <p className="mt-1 text-sm text-red-600">{errors.endTime.message}</p>}
-            </div>
-          </div>
+          {renderTimeInputs()}
+          {renderSmartSchedulingButton()}
+          {renderSuggestions()}
           
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
             <div className="flex items-start">
@@ -1070,11 +1160,7 @@ const AppointmentForm = ({
                     <div
                       key={option.value}
                       onClick={() => field.onChange(option.value)}
-                      className={`cursor-pointer border rounded-md px-3 py-2 text-center ${
-                        field.value === option.value
-                          ? `${option.color} border-2`
-                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                      }`}
+                      className={`cursor-pointer border rounded-md px-3 py-2 text-center ${field.value === option.value ? option.color + ' border-2' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}`}
                     >
                       {option.value}
                     </div>
@@ -1082,141 +1168,75 @@ const AppointmentForm = ({
                 </div>
               )}
             />
+            {errors.status && <p className="mt-1 text-sm text-red-600">{errors.status.message}</p>}
           </div>
 
           {/* Notes */}
           <div className="mb-4">
-            <label htmlFor="notes" className="flex items-center text-sm font-medium text-gray-700 mb-1">
-              <FaNotesMedical className="text-gray-400 mr-2" /> Notes
-            </label>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700">Notes</label>
             <Controller
               name="notes"
               control={control}
               render={({ field }) => (
-                <div className="space-y-2">
-                  <textarea
-                    {...field}
-                    id="notes"
-                    rows="5"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Add any additional notes about the appointment here..."
-                    maxLength={500}
-                  />
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>{field.value?.length || 0}/500 characters</span>
-                    <button
-                      type="button"
-                      className="text-indigo-600 hover:text-indigo-800"
-                      onClick={() => {
-                        const templates = [
-                          'Follow-up appointment for previous treatment.',
-                          'New patient initial consultation.',
-                          'Routine check-up appointment.',
-                          'Patient requested urgent appointment.',
-                          'Referral from Dr. '
-                        ];
-                        const template = window.prompt(
-                          'Select a template number or enter custom text:\n' +
-                          templates.map((t, i) => `${i + 1}. ${t}`).join('\n')
-                        );
-                        if (template) {
-                          if (!isNaN(template) && templates[parseInt(template) - 1]) {
-                            field.onChange(templates[parseInt(template) - 1]);
-                          } else {
-                            field.onChange(template);
-                          }
-                        }
-                      }}
-                    >
-                      Use Template
-                    </button>
-                  </div>
-                </div>
+                <textarea
+                  {...field}
+                  rows="3"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
               )}
             />
+            {errors.notes && <p className="mt-1 text-sm text-red-600">{errors.notes.message}</p>}
           </div>
-        </div>
-      )}
 
-      {/* Summary section before submission */}
-      {(watch('patientId') && watch('doctorId') && watch('serviceType') && watch('startTime') && watch('endTime')) && (
-        <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-          <h4 className="text-sm font-medium text-indigo-800 mb-2">Appointment Summary</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-gray-600">Patient:</span> {
-                patients.find(p => p.value === watch('patientId'))?.label || 'Not selected'
-              }
-            </div>
-            <div>
-              <span className="text-gray-600">Doctor:</span> {
-                doctors.find(d => d.value === watch('doctorId'))?.label || 'Not selected'
-              }
-            </div>
-            <div>
-              <span className="text-gray-600">Service:</span> {
-                // Handle grouped services
-                services.some(s => s.options)
-                  ? services.flatMap(g => g.options || []).find(s => s.value === watch('serviceType'))?.label
-                  : services.find(s => s.value === watch('serviceType'))?.label || 'Not selected'
-              }
-            </div>
-            <div>
-              <span className="text-gray-600">Date:</span> {
-                watch('startTime') ? new Date(watch('startTime')).toLocaleDateString() : 'Not set'
-              }
-            </div>
-            <div>
-              <span className="text-gray-600">Time:</span> {
-                watch('startTime') ? new Date(watch('startTime')).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Not set'
-              } - {
-                watch('endTime') ? new Date(watch('endTime')).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Not set'
-              }
-            </div>
-            <div>
-              <span className="text-gray-600">Status:</span> <span className={`
-                ${watch('status') === 'Scheduled' ? 'text-blue-700' : ''}
-                ${watch('status') === 'Confirmed' ? 'text-green-700' : ''}
-                ${watch('status') === 'Completed' ? 'text-purple-700' : ''}
-                ${watch('status') === 'Cancelled' ? 'text-red-700' : ''}
-                ${watch('status') === 'No Show' ? 'text-orange-700' : ''}
-              `}>{watch('status')}</span>
-            </div>
-          </div>
+          {/* Conflict Warning */}
+          {checkingConflict && <p className="mt-2 text-sm text-yellow-600">{conflictWarning || 'Checking for conflicts...'}</p>}
+          {conflictWarning && <p className="mt-2 text-sm text-red-600">{conflictWarning}</p>}
         </div>
       )}
       
-      <div className="flex justify-end space-x-3 pt-4 mt-6 border-t border-gray-200">
+      <div className="flex justify-end space-x-2 mt-6">
         <Button 
           type="button" 
           variant="outline" 
-          onClick={() => {
-            if (onClose) {
-              onClose();
-            } else {
-              console.log('No onClose handler provided');
-            }
-          }}
-          disabled={isSubmitting}
+          onClick={onClose}
         >
           Cancel
         </Button>
         <Button 
           type="submit"
-          isLoading={isSubmitting}
-          disabled={isSubmitting || isLoading || isLoading2}
+          variant="primary"
+          loading={isSubmitting}
         >
-          {isSubmitting ? (
-            <>
-              <LoadingSpinner size="sm" className="mr-2" />
-              {initialData?._id ? 'Updating...' : 'Scheduling...'}
-            </>
-          ) : initialData?._id ? 'Update Appointment' : 'Schedule Appointment'}
+          {initialData ? 'Update Appointment' : 'Create Appointment'}
         </Button>
       </div>
     </form>
-    </div>
+  </div>
   );
 };
 
-export default AppointmentForm;
+import AppointmentFormClinicGuard from './AppointmentFormClinicGuard';
+
+const AppointmentFormExport = (props) => {
+  // useAuth must be called at the top level of the component
+  const { clinic, user } = useAuth();
+  const { clinicId: propClinicId } = props;
+  // clinicId logic must match form logic
+  let clinicId = null;
+  if (user && user.clinicId) {
+    clinicId = typeof user.clinicId === 'object' ? user.clinicId._id : user.clinicId;
+  } else if (clinic && clinic._id) {
+    clinicId = clinic._id;
+  } else if (clinic && clinic.id) {
+    clinicId = clinic.id;
+  } else {
+    clinicId = propClinicId;
+  }
+  return (
+    <AppointmentFormClinicGuard clinicId={clinicId} user={user} clinic={clinic} propClinicId={propClinicId}>
+      <AppointmentForm {...props} />
+    </AppointmentFormClinicGuard>
+  );
+};
+
+export default AppointmentFormExport;

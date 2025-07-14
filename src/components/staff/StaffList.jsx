@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   FaUserPlus, 
   FaEdit, 
@@ -29,12 +30,11 @@ import Pagination from '../ui/Pagination';
 const StaffList = ({ 
   staff = [], 
   loading = false, 
-  onAddStaff,
   onEditStaff,
   onDeleteStaff,
-  onViewStaff,
   onExportData,
   onPrintList,
+  onStatusChange,
   totalStaff = 0,
   currentPage = 1,
   totalPages = 1,
@@ -42,6 +42,7 @@ const StaffList = ({
   pageSize = 10,
   onPageSizeChange
 }) => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -107,6 +108,10 @@ const StaffList = ({
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
     return date.toLocaleDateString();
+  };
+
+  const handleViewStaff = (staffId) => {
+    navigate(`/admin/staff/${staffId}`);
   };
 
   // Handle sorting
@@ -259,7 +264,7 @@ const StaffList = ({
           </div>
           
           <Button
-            onClick={onAddStaff}
+            onClick={() => navigate('/admin/add-staff')}
             variant="primary"
             className="flex items-center text-sm ml-2"
           >
@@ -476,15 +481,25 @@ const StaffList = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        {staffMember.role === 'Doctor' ? (
-                          <FaUserMd className="text-blue-500" />
+                      <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden">
+                        {staffMember.profileImage && staffMember.profileImage.url ? (
+                          <img 
+                            src={staffMember.profileImage.url} 
+                            alt={staffMember.name} 
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
-                          <FaUser className="text-blue-500" />
+                          <div className="h-full w-full bg-blue-100 rounded-full flex items-center justify-center">
+                            {staffMember.role === 'Doctor' ? (
+                              <FaUserMd className="text-blue-500" />
+                            ) : (
+                              <FaUser className="text-blue-500" />
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-gray-900 cursor-pointer text-blue-600 hover:underline" onClick={() => handleViewStaff(staffMember._id)}>
                           {staffMember.name}
                         </div>
                         <div className="text-sm text-gray-500">
@@ -517,9 +532,28 @@ const StaffList = ({
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(staffMember.status)}`}>
-                      {staffMember.status}
-                    </span>
+                    {onStatusChange ? (
+                      <div className="relative inline-block">
+                        <select
+                          className={`appearance-none px-2 py-1 text-xs leading-5 font-semibold rounded-full ${getStatusColor(staffMember.status)} border border-transparent hover:border-gray-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent`}
+                          value={staffMember.status}
+                          onChange={(e) => onStatusChange(staffMember._id, e.target.value)}
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                          <option value="On Leave">On Leave</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1">
+                          <svg className="h-3 w-3 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(staffMember.status)}`}>
+                        {staffMember.status}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center">
@@ -530,25 +564,28 @@ const StaffList = ({
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end space-x-3">
                       <button
-                        onClick={() => onViewStaff(staffMember)}
-                        className="text-blue-600 hover:text-blue-900 transition-colors duration-200"
+                        onClick={() => navigate(`/admin/staff/${staffMember._id}`)}
+                        className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center"
                         title="View Details"
                       >
                         <FaEye size={16} />
+                        <span className="ml-1 hidden sm:inline">View</span>
                       </button>
                       <button
-                        onClick={() => onEditStaff(staffMember)}
-                        className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200"
-                        title="Edit"
+                        onClick={() => navigate(`/admin/staff/${staffMember._id}/edit`)}
+                        className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center"
+                        title="Edit Staff"
                       >
                         <FaEdit size={16} />
+                        <span className="ml-1 hidden sm:inline">Edit</span>
                       </button>
                       <button
                         onClick={() => onDeleteStaff(staffMember)}
-                        className="text-red-600 hover:text-red-900 transition-colors duration-200"
-                        title="Delete"
+                        className="text-red-600 hover:text-red-900 transition-colors duration-200 flex items-center"
+                        title="Delete Staff"
                       >
                         <FaTrash size={16} />
+                        <span className="ml-1 hidden sm:inline">Delete</span>
                       </button>
                     </div>
                   </td>

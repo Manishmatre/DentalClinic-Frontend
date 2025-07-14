@@ -69,10 +69,12 @@ const DashboardLayout = ({ children }) => {
                 <HStack spacing={3}>
                   <Avatar
                     size="sm"
-                    name={user?.name}
-                    src={user?.avatar}
+                    name={user?.name || `${user?.firstName} ${user?.lastName}`}
+                    src={user?.profilePicture ? `${user?.profilePicture}?${new Date().getTime()}` : user?.avatar}
                   />
-                  <Text>{user?.name}</Text>
+                  <Text>
+                    {user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`}
+                  </Text>
                 </HStack>
               </MenuButton>
               <MenuList>

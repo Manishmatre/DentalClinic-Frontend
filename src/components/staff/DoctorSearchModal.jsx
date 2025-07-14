@@ -28,7 +28,7 @@ import {
   Spinner
 } from '@chakra-ui/react';
 import { FaSearch, FaUserMd, FaInfoCircle } from 'react-icons/fa';
-import doctorService from '../../api/staff/doctorService';
+import staffService from '../../api/staff/staffService';
 
 /**
  * Modal component for searching and selecting doctors
@@ -52,7 +52,7 @@ const DoctorSearchModal = ({ isOpen, onClose, onSelect, preSelectedDoctorId = nu
   const fetchDoctors = async () => {
     setLoading(true);
     try {
-      const response = await doctorService.getDoctors();
+      const response = await staffService.getStaff({ role: 'Doctor', status: 'Active' });
       if (response && response.doctors) {
         setDoctors(response.doctors);
         setFilteredDoctors(response.doctors);

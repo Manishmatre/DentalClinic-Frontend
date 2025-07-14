@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Define token constants
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://dentalclinic-backend.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 const TOKEN_KEY = 'authToken';
 
 // Create axios instance with consistent base URL
@@ -12,13 +12,20 @@ const api = axios.create({
   }
 });
 
-// Request interceptor to inject the auth token on every request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem(TOKEN_KEY);
+    console.log('Axios request interceptor - token:', token);
+    const userData = JSON.parse(localStorage.getItem('userData') || 'null');
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    if (userData && userData.role) {
+      config.headers['X-User-Role'] = userData.role;
+    }
+    
     return config;
   },
   (error) => {

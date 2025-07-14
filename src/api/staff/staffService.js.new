@@ -1,0 +1,294 @@
+import client from '../client';
+
+const STAFF_URL = '/staff';
+
+const staffService = {
+  // Get all staff members with optional filtering
+  getStaff: async (params = {}) => {
+    try {
+      console.log('Fetching staff with params:', params);
+      
+      // Add a cache-busting parameter
+      const requestParams = {
+        ...params,
+        _t: new Date().getTime() // Add timestamp to prevent caching
+      };
+      
+      console.log('Staff URL:', STAFF_URL);
+      console.log('Request params:', requestParams);
+      
+      const response = await client.get(STAFF_URL, { params: requestParams });
+      console.log('Staff API raw response:', response);
+      
+      // Check if the response has the expected structure
+      if (response.data && response.data.data) {
+        // Return the properly formatted data
+        return {
+          data: response.data.data,
+          totalPages: response.data.pagination?.pages || 1,
+          totalItems: response.data.pagination?.total || response.data.data.length
+        };
+      } else {
+        console.warn('Unexpected API response format:', response.data);
+        // Try to handle unexpected response format
+        return {
+          data: Array.isArray(response.data) ? response.data : [],
+          totalPages: 1,
+          totalItems: Array.isArray(response.data) ? response.data.length : 0
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      
+      // Return empty data with proper structure to avoid breaking the UI
+      return {
+        data: [],
+        totalPages: 1,
+        totalItems: 0
+      };
+    }
+  },
+  
+  // Get a single staff member by ID
+  getStaffById: async (id) => {
+    try {
+      console.log(`Fetching staff with ID ${id} from API`);
+      const response = await client.get(`${STAFF_URL}/${id}`);
+      console.log('Staff data received:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching staff with ID ${id}:`, error);
+      console.error('Error details:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  // Create a new staff member
+  createStaff: async (staffData) => {
+    try {
+      console.log('Creating new staff member with data:', staffData);
+      
+      // Use the client's built-in authorization
+      console.log('Making API call to create staff member');
+      const response = await client.post(STAFF_URL, staffData);
+      console.log('API response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating staff member:', error);
+      console.error('Error status:', error.response?.status);
+      console.error('Error status text:', error.response?.statusText);
+      console.error('Error details:', error.response?.data || error.message);
+      
+      // Provide more user-friendly error message
+      if (error.response?.status === 403) {
+        throw new Error('You do not have permission to create staff members. Please contact an administrator.');
+      } else if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      
+      throw error; // Re-throw the error to be handled by the component
+    }
+  },
+  
+  // Update an existing staff member
+  updateStaff: async (id, staffData) => {
+    try {
+      console.log(`Updating staff with ID ${id}`);
+      
+      // Get the clinic ID and user data from localStorage
+      const clinicData = JSON.parse(localStorage.getItem('clinicData') || '{}');
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      
+      if (!clinicData.id) {
+        console.error('No clinic ID found in localStorage');
+        throw new Error('No clinic ID found. Please log in again.');
+      }
+      
+      console.log(`Using clinic ID: ${clinicData.id}`);
+      console.log(`User role: ${userData?.role}`);
+      
+      // Create a copy of the data to avoid modifying the original
+      const dataToSend = { ...staffData };
+      
+      // Add user role for authorization
+      if (userData && userData.role) {
+        dataToSend.userRole = userData.role;
+      }
+      
+      // Ensure the clinic ID is included in the request
+      dataToSend.clinic = clinicData.id;
+      
+      // Format address if it's an object
+      if (dataToSend.address && typeof dataToSend.address === 'object') {
+        // Keep it as a string to match backend expectations
+        const addressParts = [];
+        if (dataToSend.address.street) addressParts.push(dataToSend.address.street);
+        if (dataToSend.address.city) addressParts.push(dataToSend.address.city);
+        if (dataToSend.address.state) addressParts.push(dataToSend.address.state);
+        if (dataToSend.address.zipCode) addressParts.push(dataToSend.address.zipCode);
+        dataToSend.address = addressParts.join(', ');
+      }
+      
+      // Format emergency contact if it's an object
+      if (dataToSend.emergencyContact && typeof dataToSend.emergencyContact === 'object') {
+        // Keep it as a string to match backend expectations
+        const contactParts = [];
+        if (dataToSend.emergencyContact.name) contactParts.push(dataToSend.emergencyContact.name);
+        if (dataToSend.emergencyContact.relationship) contactParts.push(`(${dataToSend.emergencyContact.relationship})`);
+        if (dataToSend.emergencyContact.phone) contactParts.push(dataToSend.emergencyContact.phone);
+        dataToSend.emergencyContact = contactParts.join(' ');
+      }
+      
+      // Log the data being sent
+      console.log('Data being sent to server:', dataToSend);
+      
+      const response = await client.put(`${STAFF_URL}/${id}`, dataToSend);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating staff:', error);
+      
+      // Check for specific error responses
+      if (error.response) {
+        console.error('Server response error:', error.response.data);
+        
+        // Handle 403 Forbidden (authorization issues)
+        if (error.response.status === 403) {
+          throw new Error(error.response.data.message || 'Not authorized to update this staff member');
+        }
+        
+        // Handle 400 Bad Request (validation errors)
+        if (error.response.status === 400) {
+          const errorMessage = error.response.data.message || 'Validation error';
+          let errorDetails = {};
+          
+          // Handle different error formats
+          if (error.response.data.errors && Array.isArray(error.response.data.errors)) {
+            // Handle array of error messages
+            errorDetails = error.response.data.errors.reduce((acc, msg, index) => {
+              acc[`Error ${index + 1}`] = msg;
+              return acc;
+            }, {});
+          } else if (error.response.data.errors && typeof error.response.data.errors === 'object') {
+            // Handle object of error messages
+            errorDetails = error.response.data.errors;
+          } else if (error.response.data.error) {
+            // Handle single error message
+            errorDetails = { 'Error': error.response.data.error };
+          }
+          
+          // Format validation errors for display
+          let formattedError = errorMessage;
+          if (Object.keys(errorDetails).length > 0) {
+            formattedError += ': ' + Object.entries(errorDetails)
+              .map(([field, message]) => `${field}: ${message}`)
+              .join(', ');
+          }
+          
+          // Special handling for address and emergency contact errors
+          if (formattedError.includes('address') || formattedError.includes('emergencyContact')) {
+            console.warn('Possible formatting issue with address or emergency contact');
+          }
+          
+          throw new Error(formattedError);
+        }
+        
+        // Handle 404 Not Found
+        if (error.response.status === 404) {
+          throw new Error('Staff member not found');
+        }
+        
+        // Handle 500 Internal Server Error
+        if (error.response.status === 500) {
+          throw new Error('Server error: ' + (error.response.data.message || 'Unknown error'));
+        }
+        
+        // For any other error response
+        throw new Error(error.response.data.message || 'Error updating staff');
+      }
+      
+      // For network errors or other issues
+      throw new Error('Network error or server is unavailable');
+    }
+  },
+  
+  // Get staff profile
+  getStaffProfile: async (id) => {
+    try {
+      console.log(`Fetching staff profile for ID ${id}...`);
+      const response = await client.get(`${STAFF_URL}/${id}/profile`);
+      console.log('Staff profile data received:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching staff profile for ID ${id}:`, error);
+      throw error;
+    }
+  },
+  
+  // Delete a staff member
+  deleteStaff: async (id) => {
+    try {
+      console.log(`Deleting staff with ID ${id}...`);
+      const response = await client.delete(`${STAFF_URL}/${id}`);
+      console.log('Staff deletion response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error deleting staff with ID ${id}:`, error);
+      throw error;
+    }
+  },
+  
+  // Update staff status
+  updateStaffStatus: async (id, status) => {
+    try {
+      console.log(`Updating status for staff ID ${id} to ${status}...`);
+      const response = await client.patch(`${STAFF_URL}/${id}/status`, { status });
+      console.log('Status update response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating status for staff ID ${id}:`, error);
+      throw error;
+    }
+  },
+  
+  // Reset staff password
+  resetPassword: async (id, newPassword) => {
+    try {
+      console.log(`Resetting password for staff ID ${id}...`);
+      const response = await client.post(`${STAFF_URL}/${id}/reset-password`, { password: newPassword });
+      console.log('Password reset response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error resetting password for staff ID ${id}:`, error);
+      throw error;
+    }
+  },
+  
+  // Get staff statistics
+  getStaffStats: async () => {
+    try {
+      console.log('Fetching staff statistics...');
+      const response = await client.get(`${STAFF_URL}/stats`);
+      console.log('Staff statistics received:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching staff statistics:', error);
+      throw error;
+    }
+  },
+  
+  // Staff login
+  login: async (credentials) => {
+    try {
+      console.log('Attempting staff login...');
+      const response = await client.post(`${STAFF_URL}/login`, credentials);
+      console.log('Login response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error during staff login:', error);
+      throw error;
+    }
+  }
+};
+
+export default staffService;

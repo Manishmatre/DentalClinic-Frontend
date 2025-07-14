@@ -1,12 +1,15 @@
 /**
  * Format a date string to a human-readable date format (e.g., "Monday, January 1, 2023")
- * @param {string|Date} dateString - The date to format
+ * @param {string|Date} dateInput - The date to format
  * @returns {string} Formatted date string
  */
-export const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  
-  const date = new Date(dateString);
+export const formatDate = (dateInput) => {
+  if (!dateInput) return 'N/A';
+  let date = dateInput;
+  if (!(date instanceof Date)) {
+    date = new Date(dateInput);
+  }
+  if (isNaN(date.getTime())) return 'Invalid Date';
   return date.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -17,13 +20,16 @@ export const formatDate = (dateString) => {
 
 /**
  * Format a date string to a time format (e.g., "9:00 AM")
- * @param {string|Date} dateString - The date to format
+ * @param {string|Date} dateInput - The date to format
  * @returns {string} Formatted time string
  */
-export const formatTime = (dateString) => {
-  if (!dateString) return 'N/A';
-  
-  const date = new Date(dateString);
+export const formatTime = (dateInput) => {
+  if (!dateInput) return 'N/A';
+  let date = dateInput;
+  if (!(date instanceof Date)) {
+    date = new Date(dateInput);
+  }
+  if (isNaN(date.getTime())) return 'Invalid Date';
   return date.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
@@ -33,13 +39,16 @@ export const formatTime = (dateString) => {
 
 /**
  * Format a date string to a date and time format (e.g., "Jan 1, 2023, 9:00 AM")
- * @param {string|Date} dateString - The date to format
+ * @param {string|Date} dateInput - The date to format
  * @returns {string} Formatted date and time string
  */
-export const formatDateTime = (dateString) => {
-  if (!dateString) return 'N/A';
-  
-  const date = new Date(dateString);
+export const formatDateTime = (dateInput) => {
+  if (!dateInput) return 'N/A';
+  let date = dateInput;
+  if (!(date instanceof Date)) {
+    date = new Date(dateInput);
+  }
+  if (isNaN(date.getTime())) return 'Invalid Date';
   return date.toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',

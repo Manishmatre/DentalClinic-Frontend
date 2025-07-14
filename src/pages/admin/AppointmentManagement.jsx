@@ -1,1032 +1,904 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'react-toastify';
-import AppointmentCalendar from '../../components/appointments/AppointmentCalendar';
-import EnhancedAppointmentList from '../../components/appointments/EnhancedAppointmentList';
-import AppointmentForm from '../../components/appointments/AppointmentForm';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+// Components
+import AppointmentDashboard from '../../components/appointments/AppointmentDashboard';
+import AppointmentCalendarTab from '../../components/appointments/AppointmentCalendarTab';
+import AppointmentList from '../../components/appointments/AppointmentList';
+import AppointmentSettings from '../../components/appointments/AppointmentSettings';
+import AppointmentFormExport from '../../components/appointments/AppointmentForm';
 import AppointmentDetailsModal from '../../components/appointments/AppointmentDetailsModal';
 import Modal from '../../components/ui/Modal';
 import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import PageHeader from '../../components/ui/PageHeader';
-import { FaCalendarAlt, FaList, FaPlus, FaBell, FaCog, FaUserClock, FaClipboardCheck, FaExclamationTriangle } from 'react-icons/fa';
-import appointmentService from '../../api/appointments/appointmentService';
-import doctorService from '../../api/staff/doctorService';
-import patientService from '../../api/patients/patientService';
+import Alert from '../../components/ui/Alert';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import DeleteConfirmationModal from '../../components/ui/DeleteConfirmationModal';
 
-const AppointmentManagement = ({ view = 'calendar' }) => {
+// Icons
+import { 
+  FaCalendarAlt, 
+  FaList, 
+  FaPlus, 
+  FaCog, 
+  FaChartPie
+} from 'react-icons/fa';
+
+// Services
+import appointmentService from '../../api/appointments/appointmentService';
+import staffService from '../../api/staff/staffService';
+import patientService from '../../api/patients/patientService';
+import clinicService from "../../api/clinic/clinicService";
+
+const AppointmentManagement = () => {
   const { user, clinic } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // State management
   const [clinicId, setClinicId] = useState(null);
-  
-  // Debug clinic information
-  console.log('Clinic information in AppointmentManagement:', clinic);
-  
-  // Ensure clinic is available - with multiple fallback options
-  useEffect(() => {
-    // First try to get clinic from auth context
-    if (clinic && clinic._id) {
-      console.log('Using clinic ID from auth context:', clinic._id);
-      setClinicId(clinic._id);
-      localStorage.setItem('defaultClinicId', clinic._id);
-      return;
-    }
-    
-    console.log('Clinic not available in auth context, trying fallbacks...');
-    
-    // Try to get clinic ID from user object
-    if (user && user.clinicId) {
-      console.log('Using clinic ID from user object:', user.clinicId);
-      setClinicId(user.clinicId);
-      localStorage.setItem('defaultClinicId', user.clinicId);
-      return;
-    }
-    
-    // Try to get clinic ID from userData in localStorage
-    try {
-      const userDataStr = localStorage.getItem('userData');
-      if (userDataStr) {
-        const userData = JSON.parse(userDataStr);
-        if (userData && userData.clinicId) {
-          console.log('Using clinic ID from userData in localStorage:', userData.clinicId);
-          setClinicId(userData.clinicId);
-          localStorage.setItem('defaultClinicId', userData.clinicId);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error('Error parsing userData from localStorage:', e);
-    }
-    
-    // Try to get clinic from clinicData in localStorage
-    try {
-      const clinicDataStr = localStorage.getItem('clinicData');
-      if (clinicDataStr) {
-        const clinicData = JSON.parse(clinicDataStr);
-        if (clinicData && clinicData._id) {
-          console.log('Using clinic ID from clinicData in localStorage:', clinicData._id);
-          setClinicId(clinicData._id);
-          localStorage.setItem('defaultClinicId', clinicData._id);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error('Error parsing clinicData from localStorage:', e);
-    }
-    
-    // Last resort - check if defaultClinicId is already set
-    const defaultClinicId = localStorage.getItem('defaultClinicId');
-    if (defaultClinicId) {
-      console.log('Using existing defaultClinicId from localStorage:', defaultClinicId);
-      setClinicId(defaultClinicId);
-      return;
-    }
-    
-    console.error('No clinic ID found in any source');
-  }, [clinic, user]);
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'calendar', 'list', 'settings'
   const [appointments, setAppointments] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [showAppointmentDetailsModal, setShowAppointmentDetailsModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-  // Use the view prop as the initial state, but allow changing views within the component
-  const [activeView, setActiveView] = useState(view); // 'calendar', 'list', 'requests', or 'settings'
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [filterDoctor, setFilterDoctor] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [pendingRequests, setPendingRequests] = useState([]);
-  // State for appointment form
-  const [selectedPatient, setSelectedPatient] = useState(null);
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [selectedService, setSelectedService] = useState(null);
+  const [appointmentFormInitialData, setAppointmentFormInitialData] = useState(null);
+  
+  // Appointment analytics state
+  const [appointmentAnalytics, setAppointmentAnalytics] = useState({
+    totalScheduled: 0,
+    totalCompleted: 0,
+    totalCancelled: 0,
+    totalNoShow: 0,
+    recentAppointments: [],
+    upcomingAppointments: [],
+    appointmentsByStatus: {
+      labels: ['Scheduled', 'Completed', 'Cancelled', 'No-Show'],
+      data: [0, 0, 0, 0]
+    },
+    appointmentsByDoctor: {
+      labels: [],
+      data: []
+    },
+    appointmentTrend: {
+      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      data: [0, 0, 0, 0, 0, 0, 0]
+    }
+  });
+  
+  // Settings state
+  const [appointmentSettings, setAppointmentSettings] = useState(null);
 
-  // Fetch appointments and related data
-  const fetchData = async () => {
-    try {
+  // Handle tab change
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    
+    // Update URL with the tab parameter for all tabs consistently
+    navigate(`/admin/appointment-management?tab=${tab}`, { replace: true });
+  };
+  
+  // Set active tab based on URL query parameter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    
+    // Valid tab values: 'dashboard', 'calendar', 'list', 'settings'
+    if (tabParam && ['dashboard', 'calendar', 'list', 'settings'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    } else {
+      // Default to dashboard if no valid tab is specified
+      setActiveTab('dashboard');
+    }
+  }, [location.search]);
+
+  // Monitor clinic and user data changes
+  useEffect(() => {
+    let resolvedClinicId = null;
+    if (clinic?._id) {
+      resolvedClinicId = clinic._id;
+    } else if (user?.clinicId) {
+      resolvedClinicId = typeof user.clinicId === 'object' ? user.clinicId._id : user.clinicId;
+    }
+    if (resolvedClinicId) {
+      setClinicId(resolvedClinicId);
+      // Also set in localStorage for global access
+      localStorage.setItem('clinicId', resolvedClinicId);
+    }
+  }, [clinic, user]);
+
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
       setIsLoading(true);
-      setError(null);
-      
-      // Check if we have a valid auth token
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        setError('Authentication required. Please log in again.');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Use the clinicId state that we've set up with multiple fallbacks
-      if (!clinicId) {
-        console.error('No clinic ID available for fetching data');
-        setError('Missing clinic information. Please try again or refresh the page.');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Ensure clinicId is a string, not an object
-      let clinicIdString;
-      if (typeof clinicId === 'object' && clinicId !== null) {
-        if (clinicId._id) {
-          clinicIdString = clinicId._id;
-        } else if (clinicId.id) {
-          clinicIdString = clinicId.id;
-        } else {
-          console.error('Invalid clinic object format:', clinicId);
-          setError('Invalid clinic format. Please refresh the page.');
-          setIsLoading(false);
+      try {
+        // Set clinic ID with better fallback logic
+        let currentClinicId = clinic?._id;
+        
+        if (!currentClinicId) {
+          // Try to get from user's clinicId
+          currentClinicId = user?.clinicId;
+          if (typeof currentClinicId === 'object') {
+            currentClinicId = currentClinicId._id;
+          }
+        }
+        
+        if (!currentClinicId) {
+          // Try localStorage
+          currentClinicId = localStorage.getItem('defaultClinicId');
+        }
+        
+        if (!currentClinicId) {
+          // Try to get from stored clinic data
+          const storedClinicData = localStorage.getItem('clinicData');
+          if (storedClinicData) {
+            try {
+              const parsedClinicData = JSON.parse(storedClinicData);
+              currentClinicId = parsedClinicData._id;
+            } catch (e) {
+              console.error('Error parsing stored clinic data:', e);
+            }
+          }
+        }
+        
+        console.log('Clinic ID resolution:', {
+          clinicId: clinic?._id,
+          userClinicId: user?.clinicId,
+          localStorageClinicId: localStorage.getItem('defaultClinicId'),
+          finalClinicId: currentClinicId,
+          user,
+          clinic
+        });
+        
+        if (!currentClinicId) {
+          console.error('No clinic ID available for appointment management');
+          setError('Unable to determine clinic information. Please refresh the page or contact support.');
           return;
         }
+        
+        setClinicId(currentClinicId);
+        
+        // Fetch appointments
+        await fetchAppointments(currentClinicId);
+        
+        // Fetch doctors
+        const staffResponse = await staffService.getStaff({ role: 'Doctor', status: 'Active' });
+        const doctorsList = Array.isArray(staffResponse) ? staffResponse.filter(staff => staff.role === 'Doctor') : [];
+        setDoctors(doctorsList);
+        
+        // Fetch patients
+        const patientsResponse = await patientService.getPatients({ clinicId: currentClinicId });
+        if (!patientsResponse.error) {
+          setPatients(patientsResponse.data || []);
+        }
+        
+        // Fetch appointment analytics
+        await fetchAppointmentAnalytics(currentClinicId);
+        
+        // Fetch appointment settings
+        // This would be implemented in a real application
+        // For now, we'll use default settings
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setError('Failed to load appointment data. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [clinic, user, refreshTrigger]);
+  
+  // Fetch appointments
+  const fetchAppointments = async (clinicId) => {
+    try {
+      setIsLoading(true);
+      console.log('Fetching appointments for clinicId:', clinicId);
+      const response = await appointmentService.getAppointments({ clinicId });
+      if (response.error) {
+        console.error('Error fetching appointments:', response.message);
+        setError(response.details || 'Failed to fetch appointments. Please try again later.');
+        toast.error(response.message || 'Failed to fetch appointments');
+        setAppointments([]);
       } else {
-        clinicIdString = clinicId;
-      }
-      
-      console.log('Fetching appointment data with clinic ID:', clinicIdString);
-      
-      // Build filter params
-      const params = { clinicId: clinicIdString };
-      if (filterDoctor !== 'all') {
-        params.doctorId = filterDoctor;
-      }
-      if (filterStatus !== 'all') {
-        params.status = filterStatus;
-      }
-      
-      // Fetch data based on active view
-      if (activeView === 'requests') {
-        // For the requests view, we only need pending appointment requests
-        params.status = 'Pending';
-        const pendingRequestsResponse = await appointmentService.getAppointments(params);
-        setPendingRequests(pendingRequestsResponse);
-      } else {
-        // For calendar and list views, fetch all appointments with filters
-        // Fetch all data in parallel for efficiency - pass clinicId to all services
-        const [appointmentsResponse, doctorsResponse, patientsResponse] = await Promise.all([
-          appointmentService.getAppointments(params),
-          doctorService.getDoctorsByClinic(clinicId), // Use getDoctorsByClinic to ensure we get doctors
-          patientService.getPatients({ clinicId }) // Pass clinicId to get patients from the correct clinic
-        ]);
-        
-        console.log('Fetched doctors:', doctorsResponse);
-        console.log('Fetched patients:', patientsResponse);
-        
-        // Process appointments data
-        const formattedAppointments = Array.isArray(appointmentsResponse) 
-          ? appointmentsResponse 
-          : (appointmentsResponse.data || []);
-        
-        // Format dates and add titles
-        const processedAppointments = formattedAppointments.map(appointment => ({
-          ...appointment,
-          startTime: new Date(appointment.startTime),
-          endTime: new Date(appointment.endTime),
-          title: `${appointment.patientName || 'Patient'} - ${appointment.serviceName || appointment.serviceType || 'Appointment'}`
-        }));
-        
-        setAppointments(processedAppointments);
-      
-      // Process doctors data - ensure we have the correct format
-      const processedDoctors = Array.isArray(doctorsResponse) 
-        ? doctorsResponse 
-        : (doctorsResponse.data || []);
-      
-      // Add value property to doctors for select component compatibility
-      const formattedDoctors = processedDoctors.map(doctor => ({
-        ...doctor,
-        value: doctor._id,
-        label: doctor.name || `Dr. ${doctor.firstName || ''} ${doctor.lastName || ''}`
-      }));
-      
-      console.log('Processed doctors:', formattedDoctors);
-      setDoctors(formattedDoctors);
-      
-      // Process patients data - ensure we have the correct format
-      const processedPatients = Array.isArray(patientsResponse) 
-        ? patientsResponse 
-        : (patientsResponse.data || []);
-      
-      // Add value property to patients for select component compatibility
-      const formattedPatients = processedPatients.map(patient => ({
-        ...patient,
-        value: patient._id,
-        label: patient.name || `${patient.firstName || ''} ${patient.lastName || ''}`
-      }));
-      
-      console.log('Processed patients:', formattedPatients);
-      setPatients(formattedPatients);
-        
-        console.log('Fetched appointments:', appointmentsResponse);
+        setAppointments(Array.isArray(response) ? response : (response.data && Array.isArray(response.data)) ? response.data : []);
+        setError(null);
       }
     } catch (error) {
-      console.error('Error fetching appointment data:', error);
-      setError('Failed to load appointment data. ' + (error.message || 'Please try again.'));
+      console.error('Error fetching appointments:', error);
+      setError('Failed to fetch appointments. Please try again later.');
+      toast.error('Failed to fetch appointments');
+      setAppointments([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch appointment analytics
+  const fetchAppointmentAnalytics = async (clinicId) => {
+    try {
+      // Get current date and 30 days ago for analytics
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+      
+      // Pass params as an object
+      const response = await appointmentService.getAppointmentStats({ clinicId, startDate, endDate });
+      
+      if (response.error) {
+        console.error('Error fetching appointment analytics:', response.message);
+        toast.error('Failed to fetch appointment analytics');
+        return;
+      }
+      
+      // Process analytics data from backend
+      const analytics = {
+        totalScheduled: response.totalAppointments || 0,
+        totalCompleted: 0,
+        totalCancelled: 0,
+        totalNoShow: 0,
+        appointmentsByStatus: {
+          labels: [],
+          data: []
+        },
+        appointmentsByDoctor: {
+          labels: [],
+          data: []
+        },
+        appointmentTrend: {
+          labels: [],
+          data: []
+        },
+        recentAppointments: [],
+        upcomingAppointments: []
+      };
+      
+      // Process status breakdown
+      if (response.statusBreakdown && Array.isArray(response.statusBreakdown)) {
+        // Map all statuses dynamically
+        analytics.appointmentsByStatus.labels = response.statusBreakdown.map(s => s._id || 'Unknown');
+        analytics.appointmentsByStatus.data = response.statusBreakdown.map(s => s.count || 0);
+        
+        // Extract counts for common statuses (case-insensitive)
+        const getStatusCount = (status) => {
+          const found = response.statusBreakdown.find(s => (s._id || '').toLowerCase() === status.toLowerCase());
+          return found ? found.count : 0;
+        };
+        analytics.totalScheduled = getStatusCount('Scheduled');
+        analytics.totalCompleted = getStatusCount('Completed');
+        analytics.totalCancelled = getStatusCount('Cancelled');
+        analytics.totalNoShow = getStatusCount('No Show');
+      } else {
+        // Fallback if no status breakdown
+        analytics.appointmentsByStatus.labels = ['Scheduled', 'Completed', 'Cancelled', 'No Show'];
+        analytics.appointmentsByStatus.data = [0, 0, 0, 0];
+      }
+      
+      // Process doctor breakdown
+      if (response.doctorBreakdown && Array.isArray(response.doctorBreakdown)) {
+        analytics.appointmentsByDoctor.labels = response.doctorBreakdown.map(d => d.doctorName || 'Unknown');
+        analytics.appointmentsByDoctor.data = response.doctorBreakdown.map(d => d.count || 0);
+      }
+      
+      // Process daily counts
+      if (response.dailyCounts && Array.isArray(response.dailyCounts)) {
+        // Format dates for display
+        analytics.appointmentTrend.labels = response.dailyCounts.map(d => {
+          const date = new Date(d._id);
+          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        });
+        analytics.appointmentTrend.data = response.dailyCounts.map(d => d.count || 0);
+      } else {
+        // Create last 7 days as fallback
+        const labels = [];
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        }
+        analytics.appointmentTrend.labels = labels;
+        analytics.appointmentTrend.data = [0, 0, 0, 0, 0, 0, 0];
+      }
+      
+      // Set appointment analytics with what we have so far
+      setAppointmentAnalytics(analytics);
+      
+      // Fetch recent and upcoming appointments with limit
+      try {
+        const pastResponse = await appointmentService.getPastAppointments({ clinicId, limit: 5 });
+        const upcomingResponse = await appointmentService.getUpcomingAppointments({ clinicId, limit: 5 });
+        
+        if (!pastResponse.error && pastResponse) {
+          const recentAppointments = Array.isArray(pastResponse) ? pastResponse : 
+                                    (pastResponse.data && Array.isArray(pastResponse.data)) ? pastResponse.data : [];
+          
+          analytics.recentAppointments = recentAppointments.map(apt => ({
+            patientName: apt.patientName || 
+                        (apt.patient?.name) || 
+                        (apt.patient?.firstName && apt.patient?.lastName ? 
+                          `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown Patient'),
+            date: apt.startTime || apt.date || new Date(),
+            status: (apt.status || 'scheduled').toLowerCase()
+          }));
+        }
+        
+        if (!upcomingResponse.error && upcomingResponse) {
+          const upcomingAppointments = Array.isArray(upcomingResponse) ? upcomingResponse : 
+                                      (upcomingResponse.data && Array.isArray(upcomingResponse.data)) ? upcomingResponse.data : [];
+          
+          analytics.upcomingAppointments = upcomingAppointments.map(apt => ({
+            patientName: apt.patientName || 
+                        (apt.patient?.name) || 
+                        (apt.patient?.firstName && apt.patient?.lastName ? 
+                          `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown Patient'),
+            date: apt.startTime || apt.date || new Date(),
+            doctorName: apt.doctorName || 
+                       (apt.doctor?.name) || 
+                       (apt.doctor?.firstName && apt.doctor?.lastName ? 
+                         `${apt.doctor.firstName} ${apt.doctor.lastName}` : 'Unknown Doctor')
+          }));
+        }
+        
+        // Update analytics with recent and upcoming appointments
+        setAppointmentAnalytics(analytics);
+      } catch (error) {
+        console.error('Error fetching recent/upcoming appointments:', error);
+      }
+    } catch (error) {
+      console.error('Error fetching appointment analytics:', error);
+      toast.error('Failed to fetch appointment analytics');
     } finally {
       setIsLoading(false);
     }
   };
   
-  // Fetch data on component mount, when filters change, when view changes, or when clinicId changes
-  useEffect(() => {
-    if (clinicId) {
-      console.log('Fetching data because clinicId or filters changed:', clinicId);
-      fetchData();
+  // Handle appointment update
+  const handleUpdateAppointment = async (appointmentData) => {
+    if (!selectedAppointment?._id) {
+      toast.error('No appointment selected for update');
+      return;
     }
-  }, [filterDoctor, filterStatus, activeView, clinicId]);
-
-  // Handle viewing appointment details
+    
+    setIsLoading(true);
+    try {
+      // Format dates properly
+      const formattedData = { ...appointmentData };
+      
+      if (formattedData.startTime && !(formattedData.startTime instanceof Date)) {
+        formattedData.startTime = new Date(formattedData.startTime);
+      }
+      
+      if (formattedData.endTime && !(formattedData.endTime instanceof Date)) {
+        formattedData.endTime = new Date(formattedData.endTime);
+      }
+      
+      const response = await appointmentService.updateAppointment(
+        selectedAppointment._id,
+        formattedData
+      );
+      
+      if (response.error) {
+        setError(response.message || 'Failed to update appointment');
+        toast.error(response.message || 'Failed to update appointment');
+        return;
+      }
+      
+      toast.success('Appointment updated successfully');
+      setSuccess('Appointment updated successfully');
+      setShowAppointmentForm(false);
+      setSelectedAppointment(null);
+      setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh appointments list
+      fetchAppointments(clinicId);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Error updating appointment:', error);
+      setError('Failed to update appointment. Please try again later.');
+      toast.error('Failed to update appointment. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle appointment deletion
+  const confirmDeleteAppointment = async () => {
+    if (!selectedAppointment?._id) {
+      toast.error('No appointment selected for deletion');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const response = await appointmentService.deleteAppointment(selectedAppointment._id, { clinicId });
+      
+      if (response.error) {
+        let errorMessage = response.message || 'Failed to delete appointment';
+        
+        // Handle specific error cases
+        if (response.status === 403) {
+          errorMessage = 'Permission denied: Only Admin and Receptionist can delete appointments';
+          
+          // Check if the user is not an Admin or Receptionist
+          if (user && !['Admin', 'Receptionist'].includes(user.role)) {
+            errorMessage = `Your role (${user.role}) does not have permission to delete appointments. Only Admin and Receptionist can delete appointments.`;
+          }
+        }
+        
+        setError(errorMessage);
+        toast.error(errorMessage);
+        setIsDeleteModalOpen(false); // Close the delete modal on error
+        return;
+      }
+      
+      toast.success('Appointment deleted successfully');
+      setSuccess('Appointment deleted successfully');
+      setIsDeleteModalOpen(false);
+      setSelectedAppointment(null);
+      
+      // Refresh appointments list
+      fetchAppointments(clinicId);
+      
+      // Refresh analytics data
+      fetchAppointmentAnalytics(clinicId);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      
+      // Check if it's a 403 error
+      let errorMessage = 'Failed to delete appointment. Please try again later.';
+      if (error.response && error.response.status === 403) {
+        errorMessage = 'Permission denied: Only Admin and Receptionist can delete appointments';
+        
+        // Check if the user is not an Admin or Receptionist
+        if (user && !['Admin', 'Receptionist'].includes(user.role)) {
+          errorMessage = `Your role (${user.role}) does not have permission to delete appointments. Only Admin and Receptionist can delete appointments.`;
+        }
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
+      setIsDeleteModalOpen(false); // Close the delete modal on error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle appointment status update
+  const handleUpdateAppointmentStatus = async (appointmentId, status) => {
+    if (!appointmentId) {
+      toast.error('No appointment selected for status update');
+      return;
+    }
+    
+    // Check if user has permission to update appointment status based on role
+    if (user) {
+      const allowedRoles = ['Admin', 'Receptionist', 'Doctor', 'Nurse'];
+      
+      // Only certain roles can mark appointments as completed or cancelled
+      if ((status === 'completed' || status === 'cancelled') && 
+          !['Admin', 'Doctor', 'Receptionist'].includes(user.role)) {
+        const errorMessage = `Your role (${user.role}) does not have permission to mark appointments as ${status}. Only Admin, Doctor, and Receptionist can perform this action.`;
+        setError(errorMessage);
+        toast.error(errorMessage);
+        return;
+      }
+      
+      // General permission check for other status updates
+      if (!allowedRoles.includes(user.role)) {
+        const errorMessage = `Your role (${user.role}) does not have permission to update appointment status.`;
+        setError(errorMessage);
+        toast.error(errorMessage);
+        return;
+      }
+    }
+    
+    setIsLoading(true);
+    try {
+      // For direct status updates, we'll use the updateAppointment method
+      // with just the status field to avoid overwriting other fields
+      const response = await appointmentService.updateAppointment(appointmentId, { status });
+      
+      if (response.error) {
+        let errorMessage = response.message || 'Failed to update appointment status';
+        
+        // Handle specific error cases
+        if (response.status === 403) {
+          errorMessage = `Permission denied: You don't have permission to update this appointment's status`;
+        } else if (response.status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        }
+        
+        setError(errorMessage);
+        toast.error(errorMessage);
+        return response; // Return error to modal
+      }
+      
+      toast.success(`Appointment marked as ${status}`);
+      setSuccess(`Appointment marked as ${status}`);
+      setSelectedAppointment(prev => prev ? { ...prev, status } : prev);
+      fetchAppointments(clinicId);
+      fetchAppointmentAnalytics(clinicId);
+      setTimeout(() => setSuccess(null), 3000);
+      return response; // Return success to modal
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+      
+      // Check for specific error types
+      let errorMessage = 'Failed to update appointment status. Please try again later.';
+      if (error.response) {
+        if (error.response.status === 403) {
+          errorMessage = `Permission denied: You don't have permission to update this appointment's status`;
+        } else if (error.response.status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        }
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
+      return { error: true, message: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle appointment creation
+  const handleCreateAppointment = (slot) => {
+    console.log('Received slot data from calendar:', slot);
+    
+    // Ensure we have proper Date objects for the times
+    const startTime = slot.startTime ? new Date(slot.startTime) : null;
+    const endTime = slot.endTime ? new Date(slot.endTime) : null;
+    
+    console.log('Processed times:', {
+      originalStart: slot.startTime,
+      originalEnd: slot.endTime,
+      processedStart: startTime?.toISOString(),
+      processedEnd: endTime?.toISOString(),
+      startLocal: startTime?.toLocaleString(),
+      endLocal: endTime?.toLocaleString()
+    });
+    
+    // Always use the current user's clinic ID for consistency
+    const currentClinicId = user?.clinicId ? 
+      (typeof user.clinicId === 'object' ? user.clinicId._id : user.clinicId) : 
+      (clinic?._id || clinic?.id);
+    
+    console.log('Using current user clinic ID:', currentClinicId);
+    
+    setAppointmentFormInitialData({
+      startTime: startTime,
+      endTime: endTime,
+      clinicId: currentClinicId
+    });
+    setShowAppointmentForm(true);
+  };
+  
+  const handleCreateAppointmentSubmit = async (appointmentData) => {
+    setIsLoading(true);
+    try {
+      const formattedData = { ...appointmentData };
+      if (formattedData.startTime && !(formattedData.startTime instanceof Date)) {
+        formattedData.startTime = new Date(formattedData.startTime);
+      }
+      if (formattedData.endTime && !(formattedData.endTime instanceof Date)) {
+        formattedData.endTime = new Date(formattedData.endTime);
+      }
+      if (!formattedData.clinicId && clinic) {
+        formattedData.clinicId = clinic._id || clinic.id;
+      }
+      // Ensure serviceType is a string and not empty
+      if (!formattedData.serviceType || typeof formattedData.serviceType !== 'string' || formattedData.serviceType.trim() === '') {
+        toast.error('Service type is required to create an appointment');
+        setIsLoading(false);
+        return;
+      }
+      // Add detailed logging of request payload
+      console.log('Creating appointment with payload:', JSON.stringify(formattedData, null, 2));
+      const response = await appointmentService.createAppointment(formattedData);
+      if (response.error) {
+        // Log backend error details
+        console.error('Backend error response:', response);
+        toast.error(response.details || response.message || 'Failed to create appointment');
+      } else {
+        toast.success('Appointment created successfully');
+        setRefreshTrigger(prev => prev + 1);
+        setShowAppointmentForm(false);
+        setAppointmentFormInitialData(null);
+      }
+    } catch (error) {
+      console.error('Error creating appointment:', error);
+      toast.error(error.message || 'An error occurred while creating the appointment');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle appointment rescheduling
+  const handleRescheduleAppointment = async (appointmentId, newDate) => {
+    if (!appointmentId) {
+      toast.error('No appointment selected for rescheduling');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      // Format the new date if it's not already a Date object
+      const formattedDate = newDate instanceof Date ? newDate : new Date(newDate);
+      
+      // Calculate new end time based on the appointment duration
+      // First, get the current appointment to determine its duration
+      const currentAppointment = appointments.find(a => a._id === appointmentId);
+      
+      if (!currentAppointment) {
+        toast.error('Appointment not found');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Calculate the duration of the current appointment
+      const currentStart = new Date(currentAppointment.startTime);
+      const currentEnd = new Date(currentAppointment.endTime);
+      const durationMs = currentEnd.getTime() - currentStart.getTime();
+      
+      // Calculate the new end time by adding the same duration to the new start time
+      const newStartTime = formattedDate;
+      const newEndTime = new Date(newStartTime.getTime() + durationMs);
+      
+      // Use the rescheduleAppointment method with the new start and end times
+      const response = await appointmentService.rescheduleAppointment(appointmentId, { 
+        startTime: newStartTime,
+        endTime: newEndTime,
+        reason: 'Rescheduled by ' + user?.role
+      });
+      
+      if (response.error) {
+        setError(response.message || 'Failed to reschedule appointment');
+        toast.error(response.message || 'Failed to reschedule appointment');
+        return;
+      }
+      
+      toast.success('Appointment rescheduled successfully');
+      setSuccess('Appointment rescheduled successfully');
+      setShowAppointmentDetailsModal(false);
+      setSelectedAppointment(null);
+      
+      // Refresh appointments list
+      fetchAppointments(clinicId);
+      
+      // Refresh analytics data
+      fetchAppointmentAnalytics(clinicId);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Error rescheduling appointment:', error);
+      setError('Failed to reschedule appointment. Please try again later.');
+      toast.error('Failed to reschedule appointment. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle view appointment details
   const handleViewAppointment = (appointment) => {
     setSelectedAppointment(appointment);
     setShowAppointmentDetailsModal(true);
   };
   
-  // Handle updating appointment status
-  const handleUpdateAppointmentStatus = async (appointmentId, newStatus) => {
-    try {
-      setIsLoading(true);
-      
-      // If appointmentId is an object (full appointment), extract the ID and use the object
-      let id = appointmentId;
-      let updateData = { status: newStatus };
-      
-      if (typeof appointmentId === 'object' && appointmentId._id) {
-        id = appointmentId._id;
-        updateData = appointmentId;
-      }
-      
-      const statusUpdateResponse = await appointmentService.updateAppointment(id, updateData);
-      
-      // Update local state
-      setAppointments(appointments.map(apt => 
-        apt._id === id ? statusUpdateResponse.data : apt
-      ));
-      
-      // Close modal if open and it was a status change
-      let patientId = selectedPatient.value;
-      let doctorId = selectedDoctor.value;
-      
-      // If we don't have valid IDs, use mock IDs
-      if (!patientId || patientId === 'undefined') {
-        console.warn('Invalid patient ID, using mock ID');
-        patientId = '111111111111111111111111';
-      }
-      
-      if (!doctorId || doctorId === 'undefined') {
-        console.warn('Invalid doctor ID, using mock ID');
-        doctorId = '222222222222222222222222';
-      }
-      
-      // Extract clinic ID string if it's an object
-      let clinicIdString = clinicId;
-      if (typeof clinicId === 'object' && clinicId !== null) {
-        if (clinicId._id) {
-          clinicIdString = clinicId._id;
-        } else if (clinicId.id) {
-          clinicIdString = clinicId.id;
-        }
-      }
-      
-      // Format data for API
-      const formattedData = {
-        patientId: patientId,
-        doctorId: doctorId,
-        clinicId: clinicIdString,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        serviceType: selectedService ? selectedService.value : 'consultation',
-        notes: data.notes || '',
-        status: data.status || 'Scheduled',
-        reason: data.notes || (selectedService ? selectedService.label : 'Medical appointment')
-      };
-      
-      console.log('Sending appointment data:', formattedData);
-      
-      // Create appointment
-      const appointmentResponse = await appointmentService.createAppointment(formattedData);
-      console.log('Appointment created:', appointmentResponse);
-      
-      // Close modal and refresh data
-      setShowCreateModal(false);
-      fetchData();
-      toast.success('Appointment created successfully');
-      
-      // Reset form
-      reset();
-      setSelectedPatient(null);
-      setSelectedDoctor(null);
-      setSelectedService(null);
-    } catch (error) {
-      console.error('Error creating appointment:', error);
-      toast.error(`Failed to create appointment: ${error.message || 'Unknown error'}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Handle deleting an appointment
-  const handleDeleteAppointment = async (appointmentId) => {
-    try {
-      // Confirm deletion
-      if (!window.confirm('Are you sure you want to delete this appointment?')) {
-        return;
-      }
-      
-      setIsLoading(true);
-      
-      // Validate appointment ID
-      if (!appointmentId) {
-        toast.error('Invalid appointment ID');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Delete the appointment
-      await appointmentService.deleteAppointment(appointmentId);
-      
-      // Show success message
-      toast.success('Appointment deleted successfully');
-      
-      // Refresh the appointments list
-      await fetchData();
-    } catch (err) {
-      console.error('Error deleting appointment:', err);
-      const errorMessage = err.response?.data?.message || 
-                          err.message || 
-                          'Failed to delete appointment';
-      toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle editing an appointment
+  // Handle edit appointment
   const handleEditAppointment = (appointment) => {
-    setSelectedAppointment(appointment);
+    // Deep clone and normalize date fields for the form
+    const cloned = JSON.parse(JSON.stringify(appointment));
+    if (cloned.startTime) cloned.startTime = new Date(cloned.startTime);
+    if (cloned.endTime) cloned.endTime = new Date(cloned.endTime);
+    // Normalize patientId and doctorId to string IDs for the form
+    if (cloned.patientId && typeof cloned.patientId === 'object') {
+      cloned.patientId = cloned.patientId._id || cloned.patientId.id || '';
+    }
+    if (cloned.doctorId && typeof cloned.doctorId === 'object') {
+      cloned.doctorId = cloned.doctorId._id || cloned.doctorId.id || '';
+    }
+    setSelectedAppointment(cloned);
     setShowAppointmentForm(true);
   };
-
-  // Handle rescheduling an appointment
-  const handleRescheduleAppointment = async (appointmentId, newStartTime, newEndTime, reason = '') => {
-    try {
-      setIsLoading(true);
-      
-      // Validate appointment ID
-      if (!appointmentId) {
-        toast.error('Invalid appointment ID');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Validate times
-      if (!newStartTime || !newEndTime) {
-        toast.error('Start and end times are required');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Format times as ISO strings if they aren't already
-      const startTime = typeof newStartTime === 'string' ? newStartTime : newStartTime.toISOString();
-      const endTime = typeof newEndTime === 'string' ? newEndTime : newEndTime.toISOString();
-      
-      // Prepare data for API
-      const rescheduleData = {
-        startTime,
-        endTime,
-        reason: reason || 'Appointment rescheduled by admin'
-      };
-      
-      console.log(`Rescheduling appointment ${appointmentId} to:`, rescheduleData);
-      
-      // Call API to reschedule
-      const rescheduleResponse = await appointmentService.rescheduleAppointment(appointmentId, rescheduleData);
-      
-      console.log('Reschedule response:', rescheduleResponse);
-      
-      // Update appointment in state
-      setAppointments(appointments.map(apt => 
-        apt._id === appointmentId ? { ...apt, startTime, endTime } : apt
-      ));
-      
-      // Close modal if open
-      setShowAppointmentDetailsModal(false);
-      setSelectedAppointment(null);
-      
-      // Show success message
-      toast.success('Appointment rescheduled successfully');
-      
-      // Refresh data
-      fetchData();
-    } catch (error) {
-      console.error('Error rescheduling appointment:', error);
-      toast.error('Failed to reschedule appointment: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setIsLoading(false);
-    }
+  
+  // Handle date change in calendar
+  const handleDateChange = (date) => {
+    setCurrentDate(date);
+  };
+  
+  // Handle save settings
+  const handleSaveSettings = (settings) => {
+    // In a real application, this would be an API call
+    setAppointmentSettings(settings);
+    setSuccess('Appointment settings saved successfully');
+    
+    // Clear success message after 3 seconds
+    setTimeout(() => setSuccess(null), 3000);
   };
 
-  // Handle creating an appointment
-  const handleCreateAppointment = async (data) => {
-    try {
-      setIsLoading(true);
-      
-      console.log('Form data received:', data);
-      
-      // Calculate end time based on start time and duration
-      let startTime;
-      
-      // Handle different formats of appointment data
-      if (data.startTime) {
-        // If startTime is already provided, use it directly
-        startTime = new Date(data.startTime);
-      } else if (data.appointmentDate && data.appointmentTime) {
-        // If we have separate date and time fields
-        startTime = new Date(data.appointmentDate);
-        
-        // Safely handle time parsing
-        if (typeof data.appointmentTime === 'string' && data.appointmentTime.includes(':')) {
-          const timeParts = data.appointmentTime.split(':');
-          startTime.setHours(parseInt(timeParts[0]) || 0);
-          startTime.setMinutes(parseInt(timeParts[1]) || 0);
-        } else {
-          console.warn('Invalid appointment time format:', data.appointmentTime);
-          // Set a default time if the format is invalid
-          startTime.setHours(9);
-          startTime.setMinutes(0);
-        }
-      } else {
-        // If no valid time info is provided, use current time
-        console.warn('No valid appointment time provided, using current time');
-        startTime = new Date();
-        // Round to the nearest 30 minutes
-        startTime.setMinutes(Math.ceil(startTime.getMinutes() / 30) * 30);
-        startTime.setSeconds(0);
-        startTime.setMilliseconds(0);
-      }
-      
-      const endTime = new Date(startTime);
-      endTime.setMinutes(endTime.getMinutes() + parseInt(data.duration || 30));
-      
-      // Get patient and doctor IDs from the form data or selected values
-      let patientId = data.patientId;
-      let doctorId = data.doctorId;
-      
-      // If the form data doesn't have IDs but we have selected values, use those
-      if ((!patientId || patientId === 'undefined') && selectedPatient) {
-        patientId = selectedPatient.value || selectedPatient._id || selectedPatient.id;
-        console.log('Using patient ID from selected patient:', patientId);
-      }
-      
-      if ((!doctorId || doctorId === 'undefined') && selectedDoctor) {
-        doctorId = selectedDoctor.value || selectedDoctor._id || selectedDoctor.id;
-        console.log('Using doctor ID from selected doctor:', doctorId);
-      }
-      
-      // Final validation of patient and doctor IDs
-      if (!patientId || patientId === 'undefined') {
-        console.warn('No valid patient ID found, using mock ID');
-        patientId = '111111111111111111111111';
-      }
-      
-      if (!doctorId || doctorId === 'undefined') {
-        console.warn('No valid doctor ID found, using mock ID');
-        doctorId = '222222222222222222222222';
-      }
-      
-      // Extract clinic ID string if it's an object
-      let clinicIdString = clinicId;
-      if (typeof clinicId === 'object' && clinicId !== null) {
-        if (clinicId._id) {
-          clinicIdString = clinicId._id;
-        } else if (clinicId.id) {
-          clinicIdString = clinicId.id;
-        }
-      }
-      
-      // If still no valid clinic ID, try to get from localStorage
-      if (!clinicIdString) {
-        const defaultClinicId = localStorage.getItem('defaultClinicId');
-        if (defaultClinicId) {
-          clinicIdString = defaultClinicId;
-          console.log('Using defaultClinicId from localStorage:', clinicIdString);
-        }
-      }
-      
-      // Ensure we have a valid reason (this is required by the backend)
-      let reason = data.reason;
-      if (!reason || reason.trim() === '') {
-        // Try to get reason from notes
-        reason = data.notes;
-        if (!reason || reason.trim() === '') {
-          // Try to get reason from service type
-          reason = selectedService ? selectedService.label : null;
-          if (!reason || reason.trim() === '') {
-            // Use default reason as last resort
-            reason = 'Medical appointment';
-            console.log('Using default reason:', reason);
-          } else {
-            console.log('Using service label as reason:', reason);
-          }
-        } else {
-          console.log('Using notes as reason:', reason);
-        }
-      } else {
-        console.log('Using provided reason:', reason);
-      }
-      
-      // Double-check that reason is set
-      if (!reason || reason.trim() === '') {
-        reason = 'Medical appointment';
-        console.log('Fallback: Setting default reason:', reason);
-      }
-      
-      // Format data for API
-      const formattedData = {
-        patientId: patientId,
-        doctorId: doctorId,
-        clinicId: clinicIdString,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        serviceType: data.serviceType || (selectedService ? selectedService.value : 'consultation'),
-        notes: data.notes || '',
-        status: data.status || 'Scheduled',
-        reason: reason // Explicitly set reason field
-      };
-      
-      console.log('Sending appointment data:', formattedData);
-      
-      // Create appointment
-      const appointmentResponse = await appointmentService.createAppointment(formattedData);
-      console.log('Appointment created:', appointmentResponse);
-      
-      // Close modal and refresh data
-      // Only call state setters if they exist
-      try {
-        // Check if these functions exist before calling them
-        if (typeof setShowCreateModal === 'function') {
-          setShowCreateModal(false);
-        }
-        if (typeof setShowAppointmentForm === 'function') {
-          setShowAppointmentForm(false);
-        }
-      } catch (stateError) {
-        console.warn('Error closing modals:', stateError);
-        // Continue execution even if modal closing fails
-      }
-      
-      // Refresh data and show success message
-      fetchData();
-      toast.success('Appointment created successfully');
-      
-      // Reset form
-      if (typeof reset === 'function') {
-        reset();
-      }
-      setSelectedPatient(null);
-      setSelectedDoctor(null);
-      setSelectedService(null);
-    } catch (error) {
-      console.error('Error creating appointment:', error);
-      toast.error(`Failed to create appointment: ${error.message || 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-      if (typeof setIsSubmitting === 'function') {
-        setIsSubmitting(false);
-      }
-    }
-  };
-
-  // Handle updating an appointment
-  const handleUpdateAppointment = async (data) => {
-    try {
-      setIsLoading(true);
-      
-      console.log('Updating appointment with data:', data);
-      
-      // Ensure we have the appointment ID
-      if (!data._id && !selectedAppointment?._id) {
-        toast.error('No appointment ID found for update');
-        return;
-      }
-      
-      const appointmentId = data._id || selectedAppointment._id;
-      
-      // Calculate end time based on start time and duration
-      let startTime;
-      
-      // Handle different formats of appointment data
-      if (data.startTime) {
-        // If startTime is already provided, use it directly
-        startTime = new Date(data.startTime);
-      } else if (data.appointmentDate && data.appointmentTime) {
-        // If we have separate date and time fields
-        startTime = new Date(data.appointmentDate);
-        
-        // Safely handle time parsing
-        if (typeof data.appointmentTime === 'string' && data.appointmentTime.includes(':')) {
-          const timeParts = data.appointmentTime.split(':');
-          startTime.setHours(parseInt(timeParts[0]) || 0);
-          startTime.setMinutes(parseInt(timeParts[1]) || 0);
-        } else {
-          console.warn('Invalid appointment time format:', data.appointmentTime);
-          // Set a default time if the format is invalid
-          startTime.setHours(9);
-          startTime.setMinutes(0);
-        }
-      } else {
-        // If no valid time info is provided, use current time
-        console.warn('No valid appointment time provided, using current time');
-        startTime = new Date();
-        // Round to the nearest 30 minutes
-        startTime.setMinutes(Math.ceil(startTime.getMinutes() / 30) * 30);
-        startTime.setSeconds(0);
-        startTime.setMilliseconds(0);
-      }
-      
-      const endTime = new Date(startTime);
-      endTime.setMinutes(endTime.getMinutes() + parseInt(data.duration || 30));
-      
-      // Ensure we have a valid reason (this is required by the backend)
-      let reason = data.reason;
-      if (!reason || reason.trim() === '') {
-        // Try to get reason from notes
-        reason = data.notes;
-        if (!reason || reason.trim() === '') {
-          // Try to get reason from service type
-          reason = data.serviceType || selectedService?.label;
-          if (!reason || reason.trim() === '') {
-            // Use default reason as last resort
-            reason = 'Medical appointment';
-            console.log('Using default reason:', reason);
-          }
-        }
-      }
-      
-      // Format data for API
-      const formattedData = {
-        patientId: data.patientId || selectedAppointment.patientId,
-        doctorId: data.doctorId || selectedAppointment.doctorId,
-        clinicId: data.clinicId || selectedAppointment.clinicId || clinicId,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        serviceType: data.serviceType || selectedAppointment.serviceType || 'consultation',
-        notes: data.notes || selectedAppointment.notes || '',
-        status: data.status || selectedAppointment.status || 'Scheduled',
-        reason: reason
-      };
-      
-      console.log('Sending updated appointment data:', formattedData);
-      
-      // Update appointment
-      const appointmentResponse = await appointmentService.updateAppointment(appointmentId, formattedData);
-      console.log('Appointment updated:', appointmentResponse);
-      
-      // Close modal and refresh data
-      try {
-        // Check if these functions exist before calling them
-        if (typeof setShowAppointmentForm === 'function') {
-          setShowAppointmentForm(false);
-        }
-        if (typeof setSelectedAppointment === 'function') {
-          setSelectedAppointment(null);
-        }
-      } catch (stateError) {
-        console.warn('Error closing modals:', stateError);
-        // Continue execution even if modal closing fails
-      }
-      
-      // Refresh data and show success message
-      fetchData();
-      toast.success('Appointment updated successfully');
-      
-    } catch (error) {
-      console.error('Error updating appointment:', error);
-      toast.error(`Failed to update appointment: ${error.message || 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-      if (typeof setIsSubmitting === 'function') {
-        setIsSubmitting(false);
-      }
-    }
+  // Add this handler for AppointmentList delete
+  const handleDeleteAppointment = (appointment) => {
+    setSelectedAppointment(appointment);
+    setIsDeleteModalOpen(true);
   };
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <PageHeader 
-        title="Appointment Management" 
-        description="Schedule and manage clinic appointments"
-        icon={<FaCalendarAlt className="text-indigo-600" />}
-      />
-      
-      <div className="mb-6 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-        {/* View Toggle */}
-        <div className="flex bg-gray-100 p-1 rounded-md">
-          <Button
-            variant={activeView === 'calendar' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('calendar')}
-            icon={<FaCalendarAlt />}
-            className="rounded-l-md"
-          >
-            Calendar
-          </Button>
-          <Button
-            variant={activeView === 'list' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('list')}
-            icon={<FaList />}
-            className="mx-1"
-          >
-            List
-          </Button>
-          <Button
-            variant={activeView === 'requests' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('requests')}
-            icon={<FaBell />}
-            className="mx-1"
-          >
-            Requests
-          </Button>
-          <Button
-            variant={activeView === 'settings' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setActiveView('settings')}
-            icon={<FaCog />}
-            className="rounded-r-md"
-          >
-            Settings
-          </Button>
+    <div className="p-6">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Appointment Management</h1>
+          <p className="text-gray-600 mt-1">Manage all appointments, scheduling, and calendar settings</p>
         </div>
         
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="block pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-            value={filterDoctor}
-            onChange={(e) => setFilterDoctor(e.target.value)}
-          >
-            <option value="all">All Doctors</option>
-            {doctors.map(doctor => (
-              <option key={doctor._id} value={doctor._id}>
-                {doctor.name}
-              </option>
-            ))}
-          </select>
-          
-          <select
-            className="block pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="Scheduled">Scheduled</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="Cancelled">Cancelled</option>
-            <option value="Completed">Completed</option>
-            <option value="No Show">No Show</option>
-          </select>
-          
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setSelectedAppointment(null);
-              setShowAppointmentForm(true);
-            }}
-            icon={<FaPlus />}
-          >
-            New Appointment
-          </Button>
+        <div className="mt-4 md:mt-0">
+          {/* Only Admin, Receptionist, and Doctor can add new appointments */}
+          {user && ['Admin', 'Receptionist', 'Doctor'].includes(user.role) && (
+            <Button onClick={() => setShowAppointmentForm(true)} className="flex items-center">
+              <FaPlus className="mr-2" /> Add New Appointment
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Alert Messages */}
+      {error && (
+        <Alert
+          variant="error"
+          title="Error"
+          message={error}
+          onClose={() => setError(null)}
+          className="mb-6"
+        />
+      )}
       
-      <div className="mt-6">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-            <strong className="font-bold">Error: </strong>
-            <span className="block sm:inline">{error}</span>
-          </div>
-        ) : (
-          <>
-            {activeView === 'calendar' && (
-              <AppointmentCalendar
-                clinicId={clinicId} // Use the clinicId state that we've set up with multiple fallbacks
-                doctorId={filterDoctor !== 'all' ? filterDoctor : null}
-                onSelectAppointment={handleViewAppointment}
-                onCreateAppointment={(timeSlot) => {
-                  console.log('Creating appointment with time slot:', timeSlot);
-                  // Create a new appointment with the selected time slot
-                  const startTime = new Date(timeSlot.startTime);
-                  const endTime = new Date(timeSlot.endTime);
-                  
-                  // Ensure we're creating a new object to avoid reference issues
-                  setSelectedAppointment({
-                    startTime: startTime,
-                    endTime: endTime
-                  });
-                  
-                  // Show toast notification to confirm time selection
-                  toast.info(`Creating appointment for ${startTime.toLocaleString()}`);
-                  
-                  // Open the appointment form
-                  setShowAppointmentForm(true);
-                }}
-                userRole="Admin"
-              />
-            )}
-            
-            {activeView === 'list' && (
-              <EnhancedAppointmentList
+      {success && (
+        <Alert
+          variant="success"
+          title="Success"
+          message={success}
+          onClose={() => setSuccess(null)}
+          className="mb-6"
+        />
+      )}
+
+      {/* Tabs Navigation */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => handleTabChange('dashboard')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'dashboard'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            <FaChartPie className="inline-block mr-2" /> Dashboard
+          </button>
+          
+          <button
+            onClick={() => handleTabChange('calendar')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'calendar'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            <FaCalendarAlt className="inline-block mr-2" /> Calendar
+          </button>
+          
+          <button
+            onClick={() => handleTabChange('list')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'list'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            <FaList className="inline-block mr-2" /> List View
+          </button>
+          
+          <button
+            onClick={() => handleTabChange('settings')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'settings'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            <FaCog className="inline-block mr-2" /> Settings
+          </button>
+        </nav>
+      </div>
+
+      {/* Loading Spinner */}
+      {isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center h-64">
+          <Alert variant="error" title="Error" message={error} />
+        </div>
+      ) : (
+        /* Tab Content */
+        <div>
+          {activeTab === 'dashboard' && (
+            <AppointmentDashboard analytics={appointmentAnalytics} />
+          )}
+          {activeTab === 'calendar' && (
+            <AppointmentCalendarTab
+              appointments={appointments || []}
+              onViewAppointment={handleViewAppointment}
+              onEditAppointment={handleEditAppointment}
+              onDeleteAppointment={(appointment) => {
+                setSelectedAppointment(appointment);
+                setIsDeleteModalOpen(true);
+              }}
+              onDateChange={handleDateChange}
+              currentDate={currentDate}
+              doctors={doctors}
+              filterDoctor={filterDoctor}
+              setFilterDoctor={setFilterDoctor}
+              filterStatus={filterStatus}
+              setFilterStatus={setFilterStatus}
+              onCreateAppointment={handleCreateAppointment}
+              clinicId={clinicId}
+            />
+          )}
+          {activeTab === 'list' && (
+            <div className="space-y-6">
+              <AppointmentList
                 appointments={appointments}
-                doctors={doctors}
-                patients={patients}
                 onView={handleViewAppointment}
                 onEdit={handleEditAppointment}
                 onDelete={handleDeleteAppointment}
-                onStatusChange={handleUpdateAppointmentStatus}
+                onUpdateStatus={handleUpdateAppointmentStatus}
+                isLoading={isLoading}
+                error={error}
+                userRole={user?.role || 'Admin'}
               />
-            )}
-            
-            {activeView === 'requests' && (
-              <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="p-6">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <FaUserClock className="mr-2 text-indigo-600" /> Appointment Requests
-                  </h2>
-                  
-                  {pendingRequests.length === 0 ? (
-                    <div className="text-center py-8">
-                      <FaClipboardCheck className="mx-auto text-4xl text-gray-300 mb-3" />
-                      <p className="text-gray-500">No pending appointment requests</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {pendingRequests.map(request => (
-                        <div key={request._id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h3 className="font-medium text-gray-800">
-                                {request.patientName || (request.patientId && request.patientId.name) || 'Unknown Patient'}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                {request.serviceType} • {new Date(request.startTime).toLocaleDateString()} • 
-                                {new Date(request.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                              {request.notes && (
-                                <p className="text-sm text-gray-600 mt-2">
-                                  <strong>Notes:</strong> {request.notes}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex space-x-2">
-                              <Button
-                                variant="success"
-                                size="sm"
-                                onClick={() => handleUpdateAppointmentStatus(request._id, 'Confirmed')}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => handleUpdateAppointmentStatus(request._id, 'Cancelled')}
-                              >
-                                Decline
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {activeView === 'settings' && (
-              <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="p-6">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <FaCog className="mr-2 text-indigo-600" /> Appointment Settings
-                  </h2>
-                  
-                  <div className="space-y-6">
-                    {/* Working Hours */}
-                    <Card>
-                      <h3 className="text-lg font-medium text-gray-800 mb-4">Clinic Working Hours</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
-                          <div key={day} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                            <span className="font-medium">{day}</span>
-                            <div className="flex items-center space-x-4">
-                              <div>
-                                <label className="block text-sm text-gray-600 mb-1">Open</label>
-                                <input 
-                                  type="time" 
-                                  className="border border-gray-300 rounded px-2 py-1 text-sm" 
-                                  defaultValue={day === 'Sunday' ? '' : '09:00'} 
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm text-gray-600 mb-1">Close</label>
-                                <input 
-                                  type="time" 
-                                  className="border border-gray-300 rounded px-2 py-1 text-sm" 
-                                  defaultValue={day === 'Sunday' ? '' : '17:00'} 
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-4 flex justify-end">
-                        <Button variant="primary">Save Working Hours</Button>
-                      </div>
-                    </Card>
-                    
-                    {/* Appointment Duration */}
-                    <Card>
-                      <h3 className="text-lg font-medium text-gray-800 mb-4">Default Appointment Duration</h3>
-                      <div className="flex items-center space-x-4">
-                        <select className="border border-gray-300 rounded-md px-3 py-2">
-                          <option value="15">15 minutes</option>
-                          <option value="30" selected>30 minutes</option>
-                          <option value="45">45 minutes</option>
-                          <option value="60">60 minutes</option>
-                        </select>
-                        <Button variant="primary">Save</Button>
-                      </div>
-                    </Card>
-                    
-                    {/* Buffer Time */}
-                    <Card>
-                      <h3 className="text-lg font-medium text-gray-800 mb-4">Buffer Time Between Appointments</h3>
-                      <div className="flex items-center space-x-4">
-                        <select className="border border-gray-300 rounded-md px-3 py-2">
-                          <option value="0">No buffer</option>
-                          <option value="5">5 minutes</option>
-                          <option value="10" selected>10 minutes</option>
-                          <option value="15">15 minutes</option>
-                        </select>
-                        <Button variant="primary">Save</Button>
-                      </div>
-                    </Card>
-                    
-                    {/* Appointment Reminders */}
-                    <Card>
-                      <h3 className="text-lg font-medium text-gray-800 mb-4">Appointment Reminders</h3>
-                      <div className="space-y-3">
-                        <div className="flex items-center">
-                          <input type="checkbox" id="email_reminder" className="mr-2" checked />
-                          <label htmlFor="email_reminder">Send email reminders</label>
-                        </div>
-                        <div className="flex items-center">
-                          <input type="checkbox" id="sms_reminder" className="mr-2" checked />
-                          <label htmlFor="sms_reminder">Send SMS reminders</label>
-                        </div>
-                        <div className="mt-3">
-                          <label className="block text-sm text-gray-600 mb-1">Reminder Time</label>
-                          <select className="border border-gray-300 rounded-md px-3 py-2">
-                            <option value="1">1 hour before</option>
-                            <option value="2">2 hours before</option>
-                            <option value="24" selected>24 hours before</option>
-                            <option value="48">48 hours before</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex justify-end">
-                        <Button variant="primary">Save Reminder Settings</Button>
-                      </div>
-                    </Card>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      
+            </div>
+          )}
+          {activeTab === 'settings' && (
+            <AppointmentSettings
+              settings={appointmentSettings}
+              onSaveSettings={handleSaveSettings}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Modals */}
       {/* Appointment Form Modal */}
       <Modal
         isOpen={showAppointmentForm}
         onClose={() => {
           setShowAppointmentForm(false);
           setSelectedAppointment(null);
+          setAppointmentFormInitialData(null);
         }}
         title={selectedAppointment?._id ? "Edit Appointment" : "New Appointment"}
         size="lg"
       >
-        <AppointmentForm
-          onSubmit={selectedAppointment?._id ? handleUpdateAppointment : handleCreateAppointment}
-          initialData={selectedAppointment}
+        <AppointmentFormExport
+          onSubmit={selectedAppointment?._id ? handleUpdateAppointment : handleCreateAppointmentSubmit}
+          initialData={selectedAppointment || appointmentFormInitialData}
           isLoading={isLoading}
           error={error}
-          clinicId={clinic?._id || localStorage.getItem('defaultClinicId') || '123456789012345678901234'}
+          clinicId={clinic?._id || localStorage.getItem('defaultClinicId')}
           onClose={() => {
             setShowAppointmentForm(false);
             setSelectedAppointment(null);
+            setAppointmentFormInitialData(null);
           }}
         />
       </Modal>
@@ -1040,15 +912,24 @@ const AppointmentManagement = ({ view = 'calendar' }) => {
             setSelectedAppointment(null);
           }}
           appointment={selectedAppointment}
-          onEdit={(appointment) => {
-            setSelectedAppointment(appointment);
-            setShowAppointmentDetailsModal(false);
-            setShowAppointmentForm(true);
+          onEdit={handleEditAppointment}
+          onDelete={() => {
+            setIsDeleteModalOpen(true);
           }}
-          onDelete={handleDeleteAppointment}
-          onUpdateStatus={handleUpdateAppointmentStatus}
+          onUpdateStatus={(appointment, status) => handleUpdateAppointmentStatus(appointment._id, status)}
           onReschedule={handleRescheduleAppointment}
-          userRole="Admin"
+          userRole={user?.role || "Admin"}
+        />
+      )}
+      
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && selectedAppointment && (
+        <DeleteConfirmationModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          onConfirm={confirmDeleteAppointment}
+          title="Delete Appointment"
+          message={`Are you sure you want to delete this appointment? This action cannot be undone.`}
         />
       )}
     </div>

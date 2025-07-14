@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { FaHistory, FaSignInAlt } from 'react-icons/fa';
+import { FaSignInAlt, FaTooth } from 'react-icons/fa';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -10,8 +12,6 @@ const Login = () => {
     role: localStorage.getItem('preferredRole') || ''
   });
   const [rememberRole, setRememberRole] = useState(!!localStorage.getItem('preferredRole'));
-  const [recentLogins, setRecentLogins] = useState(JSON.parse(localStorage.getItem('recentLogins') || '[]'));
-  const [showRecentLogins, setShowRecentLogins] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verificationSent, setVerificationSent] = useState(false);
@@ -72,16 +72,6 @@ const Login = () => {
     }
   };
 
-  // Quick login with a recent login entry
-  const handleQuickLogin = (entry) => {
-    setFormData({
-      email: entry.email,
-      password: '',  // Password still needs to be entered manually for security
-      role: entry.role
-    });
-    setShowRecentLogins(false);
-  };
-
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -97,23 +87,6 @@ const Login = () => {
     
     // Save email for convenience
     localStorage.setItem('lastEmail', formData.email);
-    
-    // Update recent logins
-    const loginEntry = { email: formData.email, role: formData.role, timestamp: new Date().toISOString() };
-    let updatedRecentLogins = [loginEntry];
-    
-    // Add previous entries, avoiding duplicates
-    recentLogins.forEach(entry => {
-      if (entry.email !== formData.email || entry.role !== formData.role) {
-        updatedRecentLogins.push(entry);
-      }
-    });
-    
-    // Keep only the 5 most recent logins
-    updatedRecentLogins = updatedRecentLogins.slice(0, 5);
-    
-    localStorage.setItem('recentLogins', JSON.stringify(updatedRecentLogins));
-    setRecentLogins(updatedRecentLogins);
 
     try {
       setLoading(true);
@@ -121,6 +94,14 @@ const Login = () => {
       const response = await login(formData);
       
       if (!response.success) {
+        // Check if email verification is required
+        if (response.requiresVerification) {
+          // The AuthProvider will handle the redirect to the verification page
+          // Just set a message for the user
+          setError('Please verify your email before logging in. Redirecting to verification page...');
+          return;
+        }
+        
         throw new Error(response.error || 'Login failed');
       }
 
@@ -140,129 +121,116 @@ const Login = () => {
       navigate(redirectPath, { replace: true });
     } catch (error) {
       console.error("Login failed:", error);
-      setError(error.message);
-      setVerificationSent(false);
+      
+      // Prefer backend error message if available
+      const backendMsg = error.response?.data?.message || error.message || '';
+      if (
+        backendMsg.toLowerCase().includes('role') ||
+        backendMsg.toLowerCase().includes('registered as') ||
+        backendMsg.toLowerCase().includes('select the correct role')
+      ) {
+        setError('Selected role does not match your account. Please check your role.');
+      } else if (backendMsg.toLowerCase().includes('not found')) {
+        setError('No account found with this email. Please check your email or register.');
+      } else if (backendMsg.toLowerCase().includes('password')) {
+        setError('Incorrect password. Please try again.');
+      } else if (backendMsg.toLowerCase().includes('verify')) {
+        setError('Please verify your email before logging in.');
+        setVerificationSent(true);
+      } else if (backendMsg) {
+        setError(backendMsg);
+      } else {
+        setError('Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
-        <div>
-          <h1 className="text-center text-4xl font-extrabold text-gray-900">
-            Complite Clinic Management
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <Card className="max-w-md w-full p-8">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4">
+            <FaTooth className="h-12 w-12 text-indigo-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            DentalOS.AI
           </h1>
-          <h2 className="mt-2 text-center text-2xl font-semibold text-gray-700">
-            Welcome Back
+          <h2 className="text-xl font-semibold text-gray-800">
+            Sign in to your account
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Please sign in to access your account
+          <p className="mt-2 text-sm text-gray-600">
+            Please select your role and enter your credentials
           </p>
         </div>
-        
-        {recentLogins.length > 0 && (
-          <div className="mt-4">
-            <button 
-              type="button" 
-              onClick={() => setShowRecentLogins(!showRecentLogins)}
-              className="flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              <FaHistory className="mr-2" />
-              {showRecentLogins ? 'Hide recent logins' : 'Show recent logins'}
-            </button>
-            
-            {showRecentLogins && (
-              <div className="mt-3 border rounded-md divide-y">
-                {recentLogins.map((entry, index) => (
-                  <div key={index} className="p-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center" onClick={() => handleQuickLogin(entry)}>
-                    <div>
-                      <div className="font-medium">{entry.email}</div>
-                      <div className="text-sm text-gray-500 flex items-center">
-                        {entry.role === 'Admin' && <FaUserCog className="mr-1" />}
-                        {entry.role === 'Doctor' && <FaUserMd className="mr-1" />}
-                        {entry.role === 'Receptionist' && <FaUserNurse className="mr-1" />}
-                        {entry.role === 'Patient' && <FaUser className="mr-1" />}
-                        {entry.role}
-                      </div>
-                    </div>
-                    <FaSignInAlt className="text-indigo-500" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+
+        <form className="space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
+            {/* Email input */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
               <input
                 id="email"
                 name="email"
                 type="email"
+                autoComplete="email"
                 required
-                className="mt-1 appearance-none block w-full px-2 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 placeholder="Enter your email"
                 value={formData.email}
                 onChange={handleChange}
-                disabled={loading}
               />
             </div>
 
+            {/* Password input */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
               <input
                 id="password"
                 name="password"
                 type="password"
+                autoComplete="current-password"
                 required
-                className="mt-1 appearance-none block w-full px-2 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 placeholder="Enter your password"
                 value={formData.password}
                 onChange={handleChange}
-                disabled={loading}
               />
             </div>
 
+            {/* Role selection */}
             <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                Login As
-              </label>
+              <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
               <select
                 id="role"
                 name="role"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                required
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 value={formData.role}
                 onChange={handleChange}
-                disabled={loading}
               >
-                <option value="">Select Role</option>
-                <option value="Admin">Admin</option>
+                <option value="" disabled>Select your role</option>
+                <option value="Admin">Administrator</option>
                 <option value="Doctor">Doctor</option>
                 <option value="Receptionist">Receptionist</option>
                 <option value="Patient">Patient</option>
               </select>
-              <div className="flex items-center mt-2">
-                <input
-                  id="remember-role"
-                  name="remember-role"
-                  type="checkbox"
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  checked={rememberRole}
-                  onChange={handleRememberRoleToggle}
-                />
-                <label htmlFor="remember-role" className="ml-2 block text-sm text-gray-900">
-                  Remember my role
-                </label>
-              </div>
             </div>
+          </div>
+
+          <div className="flex items-center">
+            <input
+              id="remember-role"
+              name="remember-role"
+              type="checkbox"
+              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+              checked={rememberRole}
+              onChange={handleRememberRoleToggle}
+            />
+            <label htmlFor="remember-role" className="ml-2 block text-sm text-gray-900">
+              Remember my role
+            </label>
           </div>
 
           {error && (
@@ -307,14 +275,11 @@ const Login = () => {
           )}
 
           <div>
-            <button
+            <Button
               type="submit"
               disabled={loading}
-              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${
-                loading 
-                  ? 'bg-indigo-400 cursor-not-allowed' 
-                  : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
-              }`}
+              variant="primary"
+              className="w-full flex justify-center items-center"
             >
               {loading ? (
                 <>
@@ -324,8 +289,13 @@ const Login = () => {
                   </svg>
                   Signing in...
                 </>
-              ) : 'Sign in'}
-            </button>
+              ) : (
+                <>
+                  <FaSignInAlt className="mr-2" />
+                  Sign in
+                </>
+              )}
+            </Button>
           </div>
 
           <div className="flex items-center justify-between">
@@ -341,7 +311,7 @@ const Login = () => {
             </div>
           </div>
         </form>
-      </div>
+      </Card>
     </div>
   );
 };

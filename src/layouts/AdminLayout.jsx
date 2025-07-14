@@ -4,6 +4,7 @@ import BaseLayout from './BaseLayout';
 import { useAuth } from '../context/AuthContext';
 import { useResourceLimits } from '../hooks/useResourceLimits';
 import NotificationBell from '../components/notifications/NotificationBell';
+import { FaTooth } from 'react-icons/fa';
 // Import custom styles
 import '../styles/custom.css';
 
@@ -79,13 +80,28 @@ const AdminNav = ({ user, clinic }) => {
             onClick={() => setIsProfileOpen(!isProfileOpen)}
           >
             <div className="relative flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-md">
-                <span className="text-indigo-600 text-lg font-bold">
-                  {user?.name?.charAt(0).toUpperCase()}
-                </span>
+              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-md overflow-hidden">
+                {user?.profilePicture ? (
+                  <img 
+                    src={`${user.profilePicture}?${new Date().getTime()}`} 
+                    alt={user?.name || `${user?.firstName} ${user?.lastName}`} 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // On error, remove the image and show the first letter
+                      e.target.style.display = 'none';
+                      e.target.parentNode.innerHTML = `<span class="text-indigo-600 text-lg font-bold">${(user?.name || user?.firstName || 'U').charAt(0).toUpperCase()}</span>`;
+                    }}
+                  />
+                ) : (
+                  <span className="text-indigo-600 text-lg font-bold">
+                    {(user?.name || user?.firstName || 'U').charAt(0).toUpperCase()}
+                  </span>
+                )}
               </div>
               <div className="hidden md:block text-left">
-                <div className="text-sm font-medium text-white">{user?.name}</div>
+                <div className="text-sm font-medium text-white">
+                  {user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`}
+                </div>
                 <div className="text-xs text-indigo-100">{user?.role}</div>
               </div>
               <svg className={`w-5 h-5 text-indigo-100 transition-transform duration-200 ${isProfileOpen ? 'transform rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -99,8 +115,33 @@ const AdminNav = ({ user, clinic }) => {
             <div className="absolute right-0 mt-2 w-64 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-50">
               {/* User Info Section */}
               <div className="px-4 py-3 border-b border-gray-100">
-                <p className="text-sm text-gray-700 font-medium truncate">{user?.email}</p>
-                <p className="text-xs text-gray-500 mt-1">Member since {new Date(user?.createdAt).toLocaleDateString()}</p>
+                <div className="flex items-center mb-2">
+                  <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mr-3 overflow-hidden">
+                    {user?.profilePicture ? (
+                      <img 
+                        src={`${user.profilePicture}?${new Date().getTime()}`} 
+                        alt={user?.name || `${user?.firstName} ${user?.lastName}`} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // On error, remove the image and show the first letter
+                          e.target.style.display = 'none';
+                          e.target.parentNode.innerHTML = `<span class="text-indigo-600 text-lg font-bold">${(user?.name || user?.firstName || 'U').charAt(0).toUpperCase()}</span>`;
+                        }}
+                      />
+                    ) : (
+                      <span className="text-indigo-600 text-lg font-bold">
+                        {(user?.name || user?.firstName || 'U').charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-700 font-medium truncate">
+                      {user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`}
+                    </p>
+                    <p className="text-xs text-gray-500">{user?.email}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">Member since {new Date(user?.createdAt || Date.now()).toLocaleDateString()}</p>
               </div>
 
               {/* Navigation Links */}
@@ -184,7 +225,45 @@ const AdminNav = ({ user, clinic }) => {
 const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
   const location = useLocation();
   const { limits } = useResourceLimits();
-  const isActive = (path) => location.pathname.startsWith(path);
+  const isActive = (path) => {
+    // Special case for staff management vs staff list to avoid both being active
+    if (path === '/admin/staff' && location.pathname.startsWith('/admin/staff-')) {
+      return false;
+    }
+    
+    // Handle query parameters for patient management links
+    if (path.includes('?')) {
+      const [basePath, queryString] = path.split('?');
+      const pathMatches = location.pathname === basePath;
+      
+      if (pathMatches && queryString) {
+        const urlParams = new URLSearchParams(location.search);
+        const queryParams = new URLSearchParams(queryString);
+        
+        // Check if the tab parameter matches
+        const tabParam = queryParams.get('tab');
+        if (tabParam && urlParams.get('tab') === tabParam) {
+          return true;
+        }
+        return false;
+      }
+      
+      // If there's a query in the path but not in the URL, it's not active
+      return false;
+    }
+    
+    // For the base patient management path, only be active if there are no query params
+    // or if it's not one of our special patient management paths
+    if (path === '/admin/patient-management') {
+      const urlParams = new URLSearchParams(location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam) {
+        return false; // Not active if a tab is specified in the URL
+      }
+    }
+    
+    return location.pathname.startsWith(path);
+  };
   
   // Icons for menu items (using SVG for professional look)
   const icons = {
@@ -233,6 +312,11 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
       </svg>
     ),
+    addUser: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+      </svg>
+    ),
     calendar: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -246,6 +330,11 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
     notification: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+      </svg>
+    ),
+    prescription: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     ),
     settings: (
@@ -283,6 +372,11 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
+    ),
+    dentalChair: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v-2a4 4 0 014-4h8a4 4 0 014 4v2M4 17h16M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+      </svg>
     )
   };
   
@@ -297,36 +391,62 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
     {
       title: 'Staff & Users',
       items: [
-        { path: '/admin/staff', label: 'Staff List', icon: icons.staff },
-        { path: '/admin/staff-management', label: 'Staff Management', icon: icons.doctor },
-        { path: '/admin/roles', label: 'Role Management', icon: icons.roles },
+        { path: '/admin/staff-management', label: 'Staff Management', icon: icons.staff },
+        { path: '/admin/add-staff', label: 'Add Staff', icon: icons.addUser },
       ]
     },
     {
-      title: 'Patients & Appointments',
+      title: 'Patient Management',
       items: [
-        { path: '/admin/patients-management', label: 'Patient Management', icon: icons.patient },
-        { path: '/admin/appointment-management', label: 'Appointment Calendar', icon: icons.calendar },
-        { path: '/admin/appointment-list', label: 'Appointment List', icon: icons.list },
-        { path: '/admin/appointment-requests', label: 'Appointment Requests', icon: icons.notification },
-        { path: '/admin/appointment-settings', label: 'Appointment Settings', icon: icons.settings },
+        { path: '/admin/patient-management', label: 'Patient Dashboard', icon: icons.dashboard },
+        { path: '/admin/patient-management?tab=patients', label: 'Patient List', icon: icons.list },
+        { path: '/admin/patient-management?tab=requests', label: 'Patient Requests', icon: icons.notification },
+        { path: '/admin/patients/add', label: 'Add Patient', icon: icons.addUser },
+      ]
+    },
+    {
+      title: 'Appointment Management',
+      items: [
+        { path: '/admin/appointment-management?tab=dashboard', label: 'Appointments Dashboard', icon: icons.dashboard },
+        { path: '/admin/appointment-management?tab=calendar', label: 'Calendar View', icon: icons.calendar },
+        { path: '/admin/appointment-management?tab=list', label: 'List View', icon: icons.list },
+        { path: '/admin/appointment-management?tab=settings', label: 'Settings', icon: icons.settings },
       ]
     },
     {
       title: 'Finance & Inventory',
       items: [
         { path: '/admin/billing-management', label: 'Billing & Payments', icon: icons.billing },
-        { path: '/admin/inventory', label: 'Inventory', icon: icons.inventory },
+        { path: '/admin/prescriptions', label: 'Prescription Management', icon: icons.prescription },
+        { path: '/admin/medicines', label: 'Medicines', icon: (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+          </svg>
+        ) },
+        { path: '/admin/inventory', label: 'Inventory Management', icon: icons.inventory },
+        { path: '/admin/inventory/add', label: 'Add Inventory Item', icon: icons.inventory },
+        { path: '/admin/dental-procedures', label: 'Dental Procedures', icon: icons.treatment },
       ]
     },
     {
       title: 'Dental Services',
       items: [
-        { path: '/admin/dental-management', label: 'Dental EHR', icon: icons.treatment },
-        { path: '/admin/patient/:patientId/dental', label: 'Tooth Chart', icon: icons.tooth },
+        { path: '/admin/dental-management', label: 'Dental Dashboard', icon: icons.dashboard },
         { path: '/admin/dental-imaging', label: 'Dental Imaging', icon: icons.dentalImaging },
-        { path: '/admin/dental-treatments', label: 'Treatment History', icon: icons.dentalHistory },
+        { path: '/admin/dental-treatments', label: 'Treatment Management', icon: icons.dentalHistory },
         { path: '/admin/dental-billing', label: 'Dental Billing', icon: icons.billing },
+        { path: '/admin/dental-procedure-schedule', label: 'Procedure Schedule', icon: icons.calendar },
+        { path: '/admin/dental/chairs', label: 'Chair Management', icon: icons.dentalChair },
+      ]
+    },
+    {
+      title: 'Dental EHR',
+      items: [
+        { path: '/admin/dental-ehr', label: 'Dental EHR Dashboard', icon: icons.dashboard },
+        { path: '/admin/dental-ehr/clinical-notes', label: 'Clinical Notes', icon: icons.treatment },
+        { path: '/admin/dental-ehr/attachments', label: 'Attachments', icon: icons.dentalImaging },
+        { path: '/admin/dental-ehr/diagnosis', label: 'Diagnosis', icon: icons.dentalHistory },
+        { path: '/admin/dental-ehr/chart', label: 'Dental Chart', icon: icons.tooth },
       ]
     },
     {
@@ -341,6 +461,8 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
       items: [
         { path: '/admin/clinic-profile', label: 'Clinic Profile', icon: icons.clinic },
         { path: '/admin/clinic-settings', label: 'Clinic Settings', icon: icons.settings },
+        { path: '/admin/subscription', label: 'Subscription Plans', icon: icons.billing },
+        { path: '/admin/subscription/manage', label: 'Manage Subscription', icon: icons.settings },
         { path: '/admin/clinic-activation', label: 'Activate Clinic', icon: icons.activate },
       ]
     }

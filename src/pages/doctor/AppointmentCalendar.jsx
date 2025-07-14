@@ -20,10 +20,10 @@ import {
   Textarea,
 } from '@chakra-ui/react';
 import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../context/AuthContext';
 
 const AppointmentCalendar = () => {
-  const { user } = useAuth();
+  const { user, socket } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -35,34 +35,57 @@ const AppointmentCalendar = () => {
 
   useEffect(() => {
     fetchAppointments();
-  }, [selectedDate]);
+
+    if (socket) {
+      socket.on('appointmentCreated', (newAppointment) => {
+        setAppointments(prev => [newAppointment, ...prev]);
+      });
+
+      socket.on('appointmentUpdated', (updatedAppointment) => {
+        setAppointments(prev => prev.map(a => a._id === updatedAppointment._id ? updatedAppointment : a));
+      });
+
+      socket.on('appointmentDeleted', ({ id }) => {
+        setAppointments(prev => prev.filter(a => a._id !== id));
+      });
+    }
+
+    return () => {
+      if (socket) {
+        socket.off('appointmentCreated');
+        socket.off('appointmentUpdated');
+        socket.off('appointmentDeleted');
+      }
+    };
+  }, [selectedDate, socket]);
 
   const fetchAppointments = async () => {
     try {
-      // TODO: Replace with actual API call
-      const mockAppointments = [
-        {
-          id: 1,
-          patientName: 'John Doe',
-          time: '09:00',
-          date: '2024-02-19',
-          service: 'Check-up',
-          status: 'Scheduled',
+      const response = await fetch(`/api/appointments/doctor/${user._id}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authorization header if needed
         },
-        {
-          id: 2,
-          patientName: 'Jane Smith',
-          time: '10:30',
-          date: '2024-02-19',
-          service: 'Consultation',
-          status: 'Confirmed',
-        },
-      ];
-      setAppointments(mockAppointments);
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch appointments');
+      }
+      const data = await response.json();
+      // Map backend data to frontend expected format
+      const appointmentsData = data.map((apt) => ({
+        id: apt._id,
+        patientName: apt.patientName,
+        time: new Date(apt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: new Date(apt.startTime).toISOString().split('T')[0],
+        service: apt.serviceType,
+        status: apt.status
+      }));
+      setAppointments(appointmentsData);
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to fetch appointments',
+        description: error.message || 'Failed to fetch appointments',
         status: 'error',
         duration: 3000,
         isClosable: true,

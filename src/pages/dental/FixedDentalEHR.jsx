@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FaTooth, FaHistory, FaImage, FaChartBar, FaFileInvoiceDollar, FaPrint, FaFilePdf, FaArrowLeft, FaCalendarAlt } from 'react-icons/fa';
+import { FaTooth, FaHistory, FaImage, FaChartBar, FaFileInvoiceDollar, FaPrint, FaFilePdf, FaArrowLeft, FaCalendarAlt, FaFileMedical } from 'react-icons/fa';
 // Import enhanced components
-import FixedToothChart from '../../components/dental/FixedToothChart';
+import AdvancedToothChart from '../../components/dental/AdvancedToothChart';
 import EnhancedDentalImaging from '../../components/dental/EnhancedDentalImaging';
 import TreatmentHistory from '../../components/dental/TreatmentHistory';
 import DentalReporting from '../../components/dental/DentalReporting';
 import DentalBilling from '../../components/dental/DentalBilling';
+import PrescriptionList from '../../components/prescriptions/PrescriptionList';
 import patientService from '../../api/patients/patientService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -166,6 +167,16 @@ const FixedDentalEHR = () => {
           </button>
           <button
             className={`px-4 py-3 text-sm font-medium flex items-center ${
+              activeTab === 'prescriptions'
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActiveTab('prescriptions')}
+          >
+            <FaFileMedical className="mr-1" /> Prescriptions
+          </button>
+          <button
+            className={`px-4 py-3 text-sm font-medium flex items-center ${
               activeTab === 'billing'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-gray-500 hover:text-gray-700'
@@ -179,7 +190,7 @@ const FixedDentalEHR = () => {
         {/* Tab Content */}
         <div className="p-4">
           {activeTab === 'chart' && (
-            <FixedToothChart patientId={patientId} readOnly={!canEditDental} />
+            <AdvancedToothChart patientId={patientId} readOnly={!canEditDental} />
           )}
           {activeTab === 'treatments' && (
             <TreatmentHistory patientId={patientId} readOnly={!canEditDental} />
@@ -189,6 +200,9 @@ const FixedDentalEHR = () => {
           )}
           {activeTab === 'reports' && (
             <DentalReporting patientId={patientId} readOnly={!canEditDental} />
+          )}
+          {activeTab === 'prescriptions' && (
+            <PrescriptionList patientId={patientId} readOnly={!canEditDental} />
           )}
           {activeTab === 'billing' && (
             <DentalBilling patientId={patientId} readOnly={!canEditDental} />

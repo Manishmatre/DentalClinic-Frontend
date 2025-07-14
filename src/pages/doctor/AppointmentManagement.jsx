@@ -541,8 +541,13 @@ const DoctorAppointmentManagement = ({ view = 'calendar' }) => {
                 <AppointmentCalendar
                   appointments={appointments}
                   onSelectAppointment={handleViewAppointment}
-                  onCreateAppointment={() => {
-                    setSelectedAppointment(null);
+                  onCreateAppointment={(slot) => {
+                    setSelectedAppointment({
+                      startTime: slot.startTime || slot.start,
+                      endTime: slot.endTime || slot.end,
+                      doctorId: user._id,
+                      clinicId: clinic?._id
+                    });
                     setShowAppointmentForm(true);
                   }}
                   userRole="Doctor"

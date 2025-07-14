@@ -15,7 +15,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import StaffDetailsModal from '../../components/staff/StaffDetailsModal';
+
 import staffService from '../../api/staff/staffService';
 
 const StaffDirectory = () => {
@@ -32,7 +32,7 @@ const StaffDirectory = () => {
     sortOrder: 'asc'
   });
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState(null);
+
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   // Fetch staff on component mount and when dependencies change
@@ -290,7 +290,7 @@ const StaffDirectory = () => {
                     
                     <div className="mt-4 flex justify-end">
                       <Button
-                        onClick={() => handleViewDetails(staffMember)}
+                        onClick={() => navigate(`/admin/staff/${staffMember._id}`)}
                         variant="outline"
                         size="sm"
                         icon={<FaEye />}
@@ -305,14 +305,6 @@ const StaffDirectory = () => {
           )}
         </div>
       </Card>
-      
-      {/* Staff Details Modal */}
-      <StaffDetailsModal
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        staff={selectedStaff}
-        onEdit={() => {}} // Read-only for doctors
-      />
     </div>
   );
 };

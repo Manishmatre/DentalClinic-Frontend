@@ -660,7 +660,7 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
       )}
       
       {/* Print-specific styles */}
-      <style jsx>{`
+      <style>{`
         @media print {
           .dental-reporting {
             padding: 20px;

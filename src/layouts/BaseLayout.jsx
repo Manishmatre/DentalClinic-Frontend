@@ -34,7 +34,7 @@ const BaseLayout = ({
           className="flex-1 p-6 min-h-[calc(100vh-60px)] transition-all duration-300 scrollbar-styled main-container"
           style={{ marginLeft: sidebarWidth }}
         >
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6 card-hover">
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
             <Outlet />
           </div>
         </main>

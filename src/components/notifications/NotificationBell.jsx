@@ -1,25 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Box, 
-  IconButton, 
-  Badge, 
-  Popover, 
-  PopoverTrigger, 
-  PopoverContent, 
-  PopoverHeader, 
-  PopoverBody, 
-  PopoverFooter,
-  Text,
-  Flex,
-  Button,
-  useDisclosure,
-  VStack,
-  HStack,
-  Divider,
-  Spinner,
-  useToast
-} from '@chakra-ui/react';
-import { FaBell, FaCheck, FaCheckDouble, FaExclamationCircle } from 'react-icons/fa';
+import { FaBell, FaCheck, FaCheckDouble, FaExclamationCircle, FaTooth, FaBoxOpen, FaCalendarAlt, FaUser, FaEnvelope, FaCog } from 'react-icons/fa';
 import notificationService from '../../api/notifications/notificationService';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -30,13 +10,33 @@ const NotificationItem = ({ notification, onMarkAsRead, onClose }) => {
   // Priority colors
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'high': return 'orange.500';
-      case 'urgent': return 'red.500';
-      case 'low': return 'gray.500';
-      default: return 'blue.500';
+      case 'high': return 'text-orange-500 border-orange-500';
+      case 'urgent': return 'text-red-500 border-red-500';
+      case 'low': return 'text-gray-500 border-gray-500';
+      default: return 'text-indigo-600 border-indigo-600';
     }
   };
   
+  // Get icon based on notification type
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case 'dental_procedure':
+        return <FaTooth className="h-4 w-4" />;
+      case 'inventory':
+        return <FaBoxOpen className="h-4 w-4" />;
+      case 'appointment':
+        return <FaCalendarAlt className="h-4 w-4" />;
+      case 'profile':
+        return <FaUser className="h-4 w-4" />;
+      case 'message':
+        return <FaEnvelope className="h-4 w-4" />;
+      case 'settings':
+        return <FaCog className="h-4 w-4" />;
+      default:
+        return <FaBell className="h-4 w-4" />;
+    }
+  };
+
   // Handle click on notification
   const handleClick = () => {
     if (isUnread) {
@@ -52,79 +52,74 @@ const NotificationItem = ({ notification, onMarkAsRead, onClose }) => {
   };
   
   return (
-    <Box 
-      p={3} 
-      _hover={{ bg: 'gray.50' }}
-      cursor="pointer"
+    <div 
+      className={`p-3 cursor-pointer border-l-4 ${isUnread ? `${getPriorityColor(priority)} bg-blue-50` : 'border-transparent bg-white'} hover:bg-gray-50`}
       onClick={handleClick}
-      bg={isUnread ? 'blue.50' : 'white'}
-      borderLeft="3px solid"
-      borderColor={isUnread ? getPriorityColor(priority) : 'transparent'}
     >
-      <HStack spacing={3} align="flex-start">
-        <Box 
-          mt={1}
-          color={getPriorityColor(priority)}
-        >
-          <FaBell />
-        </Box>
-        <Box flex="1">
-          <Text fontWeight={isUnread ? 'bold' : 'medium'} fontSize="sm">
+      <div className="flex space-x-3 items-start">
+        <div className={`mt-1 ${getPriorityColor(priority).split(' ')[0]}`}>
+          {getNotificationIcon(type)}
+        </div>
+        <div className="flex-1">
+          <div className={`text-sm ${isUnread ? 'font-bold' : 'font-medium'}`}>
             {title}
-          </Text>
-          <Text fontSize="xs" color="gray.600" noOfLines={2}>
+          </div>
+          <div className="text-xs text-gray-600 line-clamp-2">
             {message}
-          </Text>
-          <HStack mt={1} spacing={2}>
-            <Text fontSize="xs" color="gray.500">
+          </div>
+          <div className="mt-1 flex items-center space-x-2">
+            <span className="text-xs text-gray-500">
               {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
-            </Text>
+            </span>
             {isUnread && (
-              <Button 
-                size="xs" 
-                leftIcon={<FaCheck />}
-                colorScheme="blue"
-                variant="ghost"
+              <button 
+                className="text-xs text-indigo-600 flex items-center hover:text-indigo-800 focus:outline-none"
                 onClick={(e) => {
                   e.stopPropagation();
                   onMarkAsRead(_id);
                 }}
               >
+                <FaCheck className="mr-1 h-3 w-3" />
                 Mark as read
-              </Button>
+              </button>
             )}
-          </HStack>
-        </Box>
-      </HStack>
-    </Box>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
 const NotificationBell = () => {
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
-  const triggerRef = useRef(null);
-  const toast = useToast();
+  const notificationRef = useRef(null);
+  const bellRef = useRef(null);
 
-  // Fetch notifications on mount and when bell is clicked
+  // Handle clicks outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target) && 
+          bellRef.current && !bellRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch notifications when bell is clicked
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
     }
   }, [isOpen]);
-
-  // Fetch unread count every 30 seconds
-  useEffect(() => {
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
 
   // Fetch notifications
   const fetchNotifications = async (resetPage = true) => {
@@ -143,14 +138,10 @@ const NotificationBell = () => {
         }
         
         setHasMore(notifications.length === 10);
-        if (!resetPage) setPage(currentPage + 1);
-        else setPage(2);
-      } else {
-        console.warn('Unexpected notification response format:', notifications);
-        setNotifications([]);
+        setPage(currentPage + 1);
       }
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -160,24 +151,30 @@ const NotificationBell = () => {
   // Fetch unread count
   const fetchUnreadCount = async () => {
     try {
-      const notifications = await notificationService.getNotifications();
-      
-      if (Array.isArray(notifications)) {
-        setUnreadCount(notifications.filter(n => n.status === 'unread').length);
-      } else {
-        console.warn('Unexpected notification response format:', notifications);
-        setUnreadCount(0);
+      // For development, just count unread notifications from mock data
+      if (import.meta.env.DEV) {
+        const notifications = await notificationService.getNotifications();
+        const unreadCount = notifications.filter(n => n.status === 'unread').length;
+        setUnreadCount(unreadCount);
+        return;
       }
-    } catch (error) {
-      console.error('Error fetching unread count:', error);
-      setUnreadCount(0);
+      
+      // For production, make API call to get unread count
+      const response = await fetch('/api/notifications/unread-count');
+      const data = await response.json();
+      setUnreadCount(data.count);
+    } catch (err) {
+      console.error('Error fetching unread count:', err);
     }
   };
 
   // Mark all as read
   const handleMarkAllAsRead = async () => {
     try {
+      setLoading(true);
       await notificationService.markAllAsRead();
+      
+      // Update local state
       setNotifications(prev => 
         prev.map(notification => ({
           ...notification,
@@ -186,22 +183,13 @@ const NotificationBell = () => {
       );
       setUnreadCount(0);
       
-      toast({
-        title: 'Success',
-        description: 'All notifications marked as read',
-        status: 'success',
-        duration: 3000,
-        isClosable: true
-      });
-    } catch (error) {
-      console.error('Error marking all as read:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to mark notifications as read',
-        status: 'error',
-        duration: 3000,
-        isClosable: true
-      });
+      // Show success toast (using browser alert for now, can be replaced with a custom toast)
+      alert('All notifications marked as read');
+    } catch (err) {
+      console.error('Error marking all as read:', err);
+      alert('Failed to mark all notifications as read');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -210,6 +198,7 @@ const NotificationBell = () => {
     try {
       await notificationService.markAsRead(id);
       
+      // Update local state
       setNotifications(prev => 
         prev.map(notification => 
           notification._id === id 
@@ -217,18 +206,10 @@ const NotificationBell = () => {
             : notification
         )
       );
-      
-      // Update unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to mark notification as read',
-        status: 'error',
-        duration: 3000,
-        isClosable: true
-      });
+    } catch (err) {
+      console.error('Error marking notification as read:', err);
+      alert('Failed to mark notification as read');
     }
   };
 
@@ -237,124 +218,102 @@ const NotificationBell = () => {
     fetchNotifications(false);
   };
 
+  // Toggle notification panel
+  const toggleNotifications = () => {
+    setIsOpen(!isOpen);
+  };
+
   return (
-    <Box>
-      <Popover
-        isOpen={isOpen}
-        onClose={onClose}
-        placement="bottom-end"
-        closeOnBlur={true}
-        trigger="click"
-        gutter={0}
+    <div className="relative">
+      {/* Bell Icon Button */}
+      <button
+        ref={bellRef}
+        className="relative p-2 text-white rounded-full hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        onClick={toggleNotifications}
+        aria-label="Notifications"
       >
-        <PopoverTrigger>
-          <Box ref={triggerRef}>
-            <IconButton
-              aria-label="Notifications"
-              icon={<FaBell />}
-              onClick={onOpen}
-              variant="ghost"
-              fontSize="20px"
-              _hover={{ bg: 'gray.100' }}
-              _active={{ bg: 'gray.200' }}
-              position="relative"
-            >
-              {unreadCount > 0 && (
-                <Badge
-                  color="white"
-                  bg="red.500"
-                  borderRadius="full"
-                  position="absolute"
-                  top="-8px"
-                  right="-8px"
-                  fontSize="0.8em"
-                  padding="0 6px"
-                  minW="18px"
-                  minH="18px"
-                  display="flex"
-                  justifyContent="center"
-                  alignItems="center"
-                >
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </Badge>
-              )}
-            </IconButton>
-          </Box>
-        </PopoverTrigger>
+        <FaBell className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
 
-        <PopoverContent
-          width="350px"
-          maxH="500px"
-          boxShadow="xl"
-          border="1px solid"
-          borderColor="gray.200"
-          _focus={{ outline: 'none' }}
+      {/* Notification Dropdown */}
+      {isOpen && (
+        <div 
+          ref={notificationRef}
+          className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl z-50 overflow-hidden border border-gray-200"
+          style={{ maxHeight: '500px' }}
         >
-          <PopoverHeader fontWeight="bold" borderBottom="1px solid" borderColor="gray.200">
-            <Flex justify="space-between" align="center">
-              <Text>Notifications</Text>
-              {unreadCount > 0 && (
-                <Button
-                  size="xs"
-                  leftIcon={<FaCheckDouble />}
-                  colorScheme="blue"
-                  variant="ghost"
-                  onClick={handleMarkAllAsRead}
-                >
-                  Mark all as read
-                </Button>
-              )}
-            </Flex>
-          </PopoverHeader>
+          {/* Header */}
+          <div className="px-4 py-2 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-indigo-600 to-blue-500 text-white">
+            <h3 className="font-semibold">Notifications</h3>
+            {unreadCount > 0 && (
+              <button
+                className="text-xs flex items-center text-white hover:text-gray-200 focus:outline-none"
+                onClick={handleMarkAllAsRead}
+              >
+                <FaCheckDouble className="mr-1" />
+                Mark all as read
+              </button>
+            )}
+          </div>
 
-          <PopoverBody p={0} maxH="380px" overflowY="auto">
+          {/* Body */}
+          <div className="overflow-y-auto" style={{ maxHeight: '380px' }}>
             {loading ? (
-              <Flex justify="center" align="center" h="100px">
-                <Spinner />
-              </Flex>
+              <div className="flex justify-center items-center h-24">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+              </div>
             ) : notifications.length === 0 ? (
-              <Flex direction="column" align="center" justify="center" py={8}>
-                <FaBell size="32px" color="gray" />
-                <Text mt={2} color="gray.500">
-                  No notifications
-                </Text>
-              </Flex>
+              <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                <FaBell className="h-8 w-8 mb-2 text-gray-400" />
+                <p>No notifications</p>
+              </div>
             ) : (
-              <VStack spacing={0} align="stretch" divider={<Divider />}>
+              <div className="divide-y divide-gray-200">
                 {notifications.map(notification => (
                   <NotificationItem
                     key={notification._id}
                     notification={notification}
                     onMarkAsRead={handleMarkAsRead}
-                    onClose={onClose}
+                    onClose={() => setIsOpen(false)}
                   />
                 ))}
-              </VStack>
+              </div>
             )}
-          </PopoverBody>
+          </div>
 
+          {/* Footer */}
           {notifications.length > 0 && (
-            <PopoverFooter borderTop="1px solid" borderColor="gray.200" p={2}>
+            <div className="border-t border-gray-200 p-2">
               {hasMore ? (
-                <Button
-                  width="100%"
-                  size="sm"
-                  variant="ghost"
+                <button
+                  className="w-full text-sm text-indigo-600 hover:text-indigo-800 py-1 px-3 rounded focus:outline-none focus:ring-2 focus:ring-indigo-200"
                   onClick={handleLoadMore}
-                  isLoading={loadingMore}
+                  disabled={loadingMore}
                 >
-                  Load more
-                </Button>
+                  {loadingMore ? (
+                    <span className="flex items-center justify-center">
+                      <div className="animate-spin h-4 w-4 border-t-2 border-b-2 border-indigo-500 rounded-full mr-2"></div>
+                      Loading...
+                    </span>
+                  ) : (
+                    'Load more'
+                  )}
+                </button>
               ) : (
-                <Text fontSize="xs" textAlign="center" color="gray.500">
+                <p className="text-xs text-center text-gray-500 py-1">
                   You've reached the end
-                </Text>
+                </p>
               )}
-            </PopoverFooter>
+            </div>
           )}
-        </PopoverContent>
-      </Popover>
-    </Box>
+        </div>
+      )}
+    </div>
   );
 };
 

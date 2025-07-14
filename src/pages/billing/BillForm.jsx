@@ -45,7 +45,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 
 import billService from '../../api/billing/billService';
 import patientService from '../../api/patients/patientService';
-import doctorService from '../../api/staff/doctorService';
+import staffService from '../../api/staff/staffService';
 import appointmentService from '../../api/appointments/appointmentService';
 import serviceService from '../../api/services/serviceService';
 import LoadingSpinner from '../../components/common/LoadingSpinner';

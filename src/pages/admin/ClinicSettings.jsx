@@ -331,8 +331,85 @@ const ClinicSettings = () => {
     'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'INR', 'BRL', 'MXN', 'ZAR'
   ];
 
+  // Billing settings
+  const billingSettings = {
+    paymentMethods: [
+      { id: 'cash', label: 'Cash', description: 'Accept cash payments' },
+      { id: 'card', label: 'Credit/Debit Card', description: 'Accept card payments' },
+      { id: 'online', label: 'Online Payment', description: 'Accept online payments' },
+      { id: 'insurance', label: 'Insurance', description: 'Accept insurance payments' }
+    ],
+    receiptOptions: [
+      { id: 'email', label: 'Email Receipt', description: 'Send receipts via email' },
+      { id: 'sms', label: 'SMS Receipt', description: 'Send receipts via SMS' },
+      { id: 'print', label: 'Print Receipt', description: 'Print physical receipts' }
+    ]
+  };
+
+  // Handle billing settings changes
+  const handleBillingChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    
+    if (type === 'checkbox') {
+      const [section, id] = name.split('.');
+      const currentSettings = [...formData.settings[section]];
+      const index = currentSettings.indexOf(id);
+      
+      if (index === -1) {
+        currentSettings.push(id);
+      } else {
+        currentSettings.splice(index, 1);
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          [section]: currentSettings
+        }
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          [name]: value
+        }
+      }));
+    }
+  };
+
   // Days of the week for working days selection
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  // Appointment rules settings
+  const appointmentRules = [
+    { id: 'allowOnlineBooking', label: 'Allow Online Booking', description: 'Allow patients to book appointments online' },
+    { id: 'requirePrepayment', label: 'Require Prepayment', description: 'Require payment before appointment confirmation' },
+    { id: 'allowWalkins', label: 'Allow Walk-ins', description: 'Allow patients to walk in without appointments' },
+    { id: 'sendReminders', label: 'Send Reminders', description: 'Send appointment reminders to patients' },
+    { id: 'requireReferral', label: 'Require Referral', description: 'Require referral for new patients' },
+  ];
+
+  // Handle appointment rule changes
+  const handleAppointmentRuleChange = (ruleId) => {
+    const currentRules = [...formData.settings.appointmentRules];
+    const index = currentRules.indexOf(ruleId);
+    
+    if (index === -1) {
+      currentRules.push(ruleId);
+    } else {
+      currentRules.splice(index, 1);
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        appointmentRules: currentRules
+      }
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -392,6 +469,18 @@ const ClinicSettings = () => {
             className={`px-4 py-2 rounded-md ${activeTab === 'hours' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             <FaClock className="mr-2" /> Working Hours
+          </button>
+          <button
+            onClick={() => setActiveTab('rules')}
+            className={`px-4 py-2 rounded-md ${activeTab === 'rules' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+          >
+            <FaCalendarAlt className="mr-2" /> Appointment Rules
+          </button>
+          <button
+            onClick={() => setActiveTab('billing')}
+            className={`px-4 py-2 rounded-md ${activeTab === 'billing' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+          >
+            <FaMoneyBillWave className="mr-2" /> Billing Settings
           </button>
           <button
             onClick={() => setActiveTab('localization')}
@@ -671,6 +760,44 @@ const ClinicSettings = () => {
             </div>
           )}
 
+          {/* Appointment Rules Tab */}
+          {activeTab === 'rules' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <FaCalendarAlt className="mr-2 text-indigo-600" /> Appointment Rules
+              </h3>
+              
+              <div className="space-y-4">
+                {appointmentRules.map((rule) => (
+                  <div key={rule.id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {rule.label}
+                      </label>
+                      <p className="text-sm text-gray-500">{rule.description}</p>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`rule-${rule.id}`}
+                        name={`settings.appointmentRules.${rule.id}`}
+                        checked={formData.settings.appointmentRules.includes(rule.id)}
+                        onChange={(e) => handleAppointmentRuleChange(rule.id)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label
+                        htmlFor={`rule-${rule.id}`}
+                        className="ml-2 text-sm text-gray-700"
+                      >
+                        Enabled
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Schedule Tab */}
           {activeTab === 'schedule' && (
             <div className="space-y-6">
@@ -714,16 +841,24 @@ const ClinicSettings = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <span className="flex items-center"><FaCalendarAlt className="mr-1" /> Working Days</span>
                 </label>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {daysOfWeek.map(day => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => handleWorkingDaysChange(day)}
-                      className={`px-3 py-2 rounded-md text-sm font-medium ${formData.settings.workingDays.includes(day) ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                    >
-                      {day}
-                    </button>
+                    <div key={day} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`working-day-${day.toLowerCase()}`}
+                        name={`settings.workingDays.${day.toLowerCase()}`}
+                        checked={formData.settings.workingDays.includes(day)}
+                        onChange={(e) => handleWorkingDaysChange(day)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label
+                        htmlFor={`working-day-${day.toLowerCase()}`}
+                        className="text-sm text-gray-700"
+                      >
+                        {day}
+                      </label>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -744,6 +879,146 @@ const ClinicSettings = () => {
                     <option key={duration} value={duration}>{duration} minutes</option>
                   ))}
                 </select>
+              </div>
+            </div>
+          )}
+
+          {/* Billing Settings Tab */}
+          {activeTab === 'billing' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <FaMoneyBillWave className="mr-2 text-indigo-600" /> Billing Settings
+              </h3>
+              
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-md font-medium text-gray-700 mb-4">Payment Methods</h4>
+                  <div className="space-y-4">
+                    {billingSettings.paymentMethods.map((method) => (
+                      <div key={method.id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {method.label}
+                          </label>
+                          <p className="text-sm text-gray-500">{method.description}</p>
+                        </div>
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id={`payment-${method.id}`}
+                            name={`paymentMethods.${method.id}`}
+                            checked={formData.settings.paymentMethods.includes(method.id)}
+                            onChange={handleBillingChange}
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <label
+                            htmlFor={`payment-${method.id}`}
+                            className="ml-2 text-sm text-gray-700"
+                          >
+                            Enabled
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-md font-medium text-gray-700 mb-4">Receipt Options</h4>
+                  <div className="space-y-4">
+                    {billingSettings.receiptOptions.map((option) => (
+                      <div key={option.id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {option.label}
+                          </label>
+                          <p className="text-sm text-gray-500">{option.description}</p>
+                        </div>
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id={`receipt-${option.id}`}
+                            name={`receiptOptions.${option.id}`}
+                            checked={formData.settings.receiptOptions.includes(option.id)}
+                            onChange={handleBillingChange}
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <label
+                            htmlFor={`receipt-${option.id}`}
+                            className="ml-2 text-sm text-gray-700"
+                          >
+                            Enabled
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="settings.currency" className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="flex items-center"><FaMoneyBillWave className="mr-1" /> Currency</span>
+                  </label>
+                  <select
+                    id="settings.currency"
+                    name="currency"
+                    value={formData.settings.currency}
+                    onChange={handleBillingChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  >
+                    {currencies.map(currency => (
+                      <option key={currency} value={currency}>{currency}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="taxRate" className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="flex items-center"><FaPercentage className="mr-1" /> Tax Rate (%)</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="taxRate"
+                    name="taxRate"
+                    value={formData.settings.taxRate || ''}
+                    onChange={handleBillingChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="discountRate" className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="flex items-center"><FaGift className="mr-1" /> Maximum Discount (%)</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="discountRate"
+                    name="discountRate"
+                    value={formData.settings.discountRate || ''}
+                    onChange={handleBillingChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="lateFee" className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="flex items-center"><FaCalendarTimes className="mr-1" /> Late Payment Fee (%)</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="lateFee"
+                    name="lateFee"
+                    value={formData.settings.lateFee || ''}
+                    onChange={handleBillingChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    min="0"
+                    max="100"
+                  />
+                </div>
               </div>
             </div>
           )}

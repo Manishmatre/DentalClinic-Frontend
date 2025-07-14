@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://dentalclinic-backend.onrender.com/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const TOKEN_KEY = 'authToken';
 
 const client = axios.create({
@@ -8,15 +8,50 @@ const client = axios.create({
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 30000 // 30 second timeout
 });
 
 // Add a request interceptor to attach the auth token
 client.interceptors.request.use(
-  (config) => {
-    // Get the token on each request to ensure we have the latest
+  async (config) => {
+    // Get the token and refresh token
     const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
+    const refreshToken = localStorage.getItem('refreshToken');
+    
+    if (!token) {
+      console.warn('API Client: No auth token found, checking if we need to refresh');
+      
+      // If we have a refresh token, try to refresh
+      if (refreshToken) {
+        try {
+          // Try to refresh the token
+          const refreshResponse = await axios.post(`${API_URL}/auth/refresh-token`, {
+            refreshToken
+          });
+          
+          if (refreshResponse.data.token) {
+            localStorage.setItem(TOKEN_KEY, refreshResponse.data.token);
+            config.headers.Authorization = `Bearer ${refreshResponse.data.token}`;
+            console.log('API Client: Token refreshed successfully');
+          }
+        } catch (refreshError) {
+          console.error('API Client: Failed to refresh token:', refreshError);
+          // Clear auth state on refresh failure
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem('refreshToken');
+          
+          // If not on login page, redirect to login
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+          return Promise.reject(refreshError);
+        }
+      } else {
+        console.error('API Client: No auth token or refresh token found');
+        return Promise.reject(new Error('No auth token available'));
+      }
+    } else {
       config.headers.Authorization = `Bearer ${token}`;
       
       // Add more detailed logging for staff request endpoints
@@ -32,8 +67,6 @@ client.interceptors.request.use(
       } else {
         console.log('API Client: Added auth token to request');
       }
-    } else {
-      console.warn('API Client: No auth token found for request to:', config.url);
     }
     return config;
   },
@@ -70,22 +103,32 @@ client.interceptors.response.use(
       });
     }
     
-    if (response?.status === 401) {
-      console.warn('API Client: Unauthorized response (401) - clearing auth state');
-      // Clear auth state on unauthorized
-      localStorage.removeItem(TOKEN_KEY);
+    // Handle token-related errors
+    if (response?.data?.message?.includes('token') || response?.status === 401) {
+      console.warn('API Client: Token-related error received, attempting to refresh token');
       
-      // Only redirect to login if we're not already on the login page
-      if (!window.location.pathname.includes('/login')) {
-        console.log('API Client: Redirecting to login page');
-        window.location.href = '/login';
+      // Try to refresh the token
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        try {
+          const refreshResponse = await axios.post(`${API_URL}/auth/refresh-token`, {
+            refreshToken
+          });
+          
+          if (refreshResponse.data.token) {
+            localStorage.setItem(TOKEN_KEY, refreshResponse.data.token);
+            // Retry the original request with new token
+            config.headers.Authorization = `Bearer ${refreshResponse.data.token}`;
+            return client(config);
+          }
+        } catch (refreshError) {
+          console.error('API Client: Failed to refresh token:', refreshError);
+        }
       }
-    }
-    
-    // Redirect to login if token is invalid or expired
-    if (response?.data?.message?.includes('token')) {
-      console.warn('API Client: Token-related error received, clearing auth state');
+      
+      // If refresh fails or no refresh token, clear auth state
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem('refreshToken');
       
       // Only redirect if not already on login page
       if (!window.location.pathname.includes('/login')) {
