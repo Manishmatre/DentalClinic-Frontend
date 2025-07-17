@@ -34,7 +34,9 @@ const PatientForm = () => {
   const requestMadeRef = useRef(false);
   
   // UI state
-  const [activeTab, setActiveTab] = useState('personal');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('patientFormActiveTab') || 'personal';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -319,6 +321,10 @@ const PatientForm = () => {
     startDate: '',
     endDate: ''
   });
+
+  useEffect(() => {
+    localStorage.setItem('patientFormActiveTab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     // Only fetch if we have a patientId and haven't made the request yet

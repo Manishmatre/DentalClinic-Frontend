@@ -19,71 +19,76 @@ import {
   FaStar,
   FaCalendarWeek,
   FaCalendarDay,
-  FaCalendar
+  FaCalendar,
+  FaUser
 } from 'react-icons/fa';
 import { Doughnut, Line, Bar, Radar } from 'react-chartjs-2';
 import moment from 'moment';
 import appointmentService from '../../api/appointments/appointmentService';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
+import { Chart, RadialLinearScale, RadarController } from 'chart.js';
 
-const AppointmentDashboard = () => {
+Chart.register(RadialLinearScale, RadarController);
+
+const AppointmentDashboard = ({ analytics: analyticsProp, loading: loadingProp, error: errorProp }) => {
   const { user, clinic } = useAuth();
-  const [analytics, setAnalytics] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState(analyticsProp || null);
+  const [loading, setLoading] = useState(loadingProp ?? true);
   const [dateRange, setDateRange] = useState('week'); // week, month, quarter, year
   const [selectedDoctor, setSelectedDoctor] = useState('all');
   const [doctors, setDoctors] = useState([]);
   const [refreshInterval, setRefreshInterval] = useState(300000); // 5 minutes
+  const [error, setError] = useState(errorProp ?? null);
+  const [recentAppointments, setRecentAppointments] = useState([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState([]);
 
-  // Fetch analytics data
+  // Only fetch if analyticsProp is not provided
   const fetchAnalytics = useCallback(async () => {
+    if (analyticsProp) return;
     if (!clinic?._id) return;
-
     try {
       setLoading(true);
       const endDate = moment().endOf('day');
       let startDate;
-
       switch (dateRange) {
-        case 'week':
-          startDate = moment().startOf('week');
-          break;
-        case 'month':
-          startDate = moment().startOf('month');
-          break;
-        case 'quarter':
-          startDate = moment().startOf('quarter');
-          break;
-        case 'year':
-          startDate = moment().startOf('year');
-          break;
-        default:
-          startDate = moment().startOf('week');
+        case 'week': startDate = moment().startOf('week'); break;
+        case 'month': startDate = moment().startOf('month'); break;
+        case 'quarter': startDate = moment().startOf('quarter'); break;
+        case 'year': startDate = moment().startOf('year'); break;
+        default: startDate = moment().startOf('week');
       }
-
       const params = {
         clinicId: clinic._id,
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         doctorId: selectedDoctor !== 'all' ? selectedDoctor : undefined
       };
-
-      const response = await appointmentService.getAppointmentAnalytics(params);
-      
-      if (response.error) {
-        toast.error(response.message || 'Failed to fetch analytics');
+      let response;
+      if (appointmentService.getAppointmentAnalytics) {
+        response = await appointmentService.getAppointmentAnalytics(params);
+      } else if (appointmentService.getAppointmentStats) {
+        response = await appointmentService.getAppointmentStats(params);
+      } else {
+        response = null;
+      }
+      if (!response || response.error) {
+        setAnalytics(null);
+        setLoading(false);
+        setError(response?.message || 'Failed to fetch analytics');
+        console.error('Appointment analytics error:', response);
         return;
       }
-
       setAnalytics(response);
+      setError(null);
     } catch (error) {
+      setAnalytics(null);
+      setError('Failed to fetch analytics data');
       console.error('Error fetching analytics:', error);
-      toast.error('Failed to fetch analytics data');
     } finally {
       setLoading(false);
     }
-  }, [clinic, dateRange, selectedDoctor]);
+  }, [clinic, dateRange, selectedDoctor, analyticsProp]);
 
   // Fetch doctors
   useEffect(() => {
@@ -105,6 +110,12 @@ const AppointmentDashboard = () => {
 
   // Auto-refresh analytics
   useEffect(() => {
+    if (analyticsProp) {
+      setAnalytics(analyticsProp);
+      setLoading(loadingProp ?? false);
+      setError(errorProp ?? null);
+      return;
+    }
     fetchAnalytics();
     
     const interval = setInterval(() => {
@@ -112,7 +123,34 @@ const AppointmentDashboard = () => {
     }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [fetchAnalytics, refreshInterval]);
+  }, [fetchAnalytics, refreshInterval, analyticsProp, loadingProp, errorProp]);
+
+  // Fetch recent and upcoming appointments if not present in analytics
+  useEffect(() => {
+    if (analytics && analytics.recentAppointments && analytics.upcomingAppointments) {
+      setRecentAppointments(analytics.recentAppointments);
+      setUpcomingAppointments(analytics.upcomingAppointments);
+      return;
+    }
+    // Fetch recent appointments (last 7 days)
+    const fetchRecent = async () => {
+      try {
+        const res = await appointmentService.getAppointments({ limit: 5, sort: '-startTime' });
+        setRecentAppointments(res.data || []);
+      } catch (e) { setRecentAppointments([]); }
+    };
+    // Fetch upcoming appointments (next 7 days)
+    const fetchUpcoming = async () => {
+      try {
+        const now = new Date();
+        const in7 = new Date(); in7.setDate(now.getDate() + 7);
+        const res = await appointmentService.getAppointments({ startDate: now, endDate: in7, status: 'Scheduled', limit: 5, sort: 'startTime' });
+        setUpcomingAppointments(res.data || []);
+      } catch (e) { setUpcomingAppointments([]); }
+    };
+    fetchRecent();
+    fetchUpcoming();
+  }, [analytics]);
 
   // Export analytics data
   const exportAnalytics = () => {
@@ -166,10 +204,39 @@ const AppointmentDashboard = () => {
     return { total, average, trend };
   };
 
+  // Map backend analytics fields to dashboard metrics
+  const statusLabels = analytics?.statusBreakdown?.map(s => s._id) || [];
+  const statusData = analytics?.statusBreakdown?.map(s => s.count) || [];
+  const doctorLabels = analytics?.doctorBreakdown?.map(d => d.doctorName || 'Unknown') || [];
+  const doctorData = analytics?.doctorBreakdown?.map(d => d.count) || [];
+  const trendLabels = analytics?.dailyCounts?.map(d => d._id) || [];
+  const trendData = analytics?.dailyCounts?.map(d => d.count) || [];
+  const serviceTypeLabels = analytics?.serviceTypeBreakdown?.map(s => s._id) || [];
+  const serviceTypeData = analytics?.serviceTypeBreakdown?.map(s => s.count) || [];
+
+  // Extract real status counts from statusBreakdown
+  const statusMap = (analytics?.statusBreakdown || []).reduce((acc, s) => {
+    acc[s._id?.toLowerCase() || s._id] = s.count;
+    return acc;
+  }, {});
+  const totalAppointments = analytics?.totalAppointments || 0;
+  const scheduled = statusMap['scheduled'] || 0;
+  const completed = statusMap['completed'] || 0;
+  const cancelled = statusMap['cancelled'] || 0;
+  const noShow = statusMap['no show'] || statusMap['no_show'] || statusMap['no-show'] || 0;
+
   if (loading && !analytics) {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64">
+        <div className="text-red-500 font-semibold mb-2">{error}</div>
       </div>
     );
   }
@@ -192,6 +259,10 @@ const AppointmentDashboard = () => {
   const utilizationRate = calculateUtilizationRate();
   const averageDuration = calculateAverageDuration();
   const revenueMetrics = calculateRevenueMetrics();
+
+  // Use real data for cards
+  const recent = recentAppointments.length ? recentAppointments : (appointmentAnalytics.recentAppointments || []);
+  const upcoming = upcomingAppointments.length ? upcomingAppointments : (appointmentAnalytics.upcomingAppointments || []);
 
   return (
     <div className="space-y-6">
@@ -267,78 +338,73 @@ const AppointmentDashboard = () => {
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Scheduled */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        {/* Total Appointments */}
         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
           <div className="p-6">
             <div className="flex items-center justify-between">
-            <div>
-                <p className="text-blue-100 text-sm font-medium">Scheduled</p>
-                <h3 className="text-3xl font-bold mt-1">{appointmentAnalytics.totalScheduled}</h3>
-                <p className="text-blue-100 text-sm mt-2 flex items-center">
-                  <FaArrowUp className="mr-1" /> 
-                  {analytics?.growthRate?.scheduled || 0}% from last period
-              </p>
-            </div>
+              <div>
+                <p className="text-blue-100 text-sm font-medium">Total Appointments</p>
+                <h3 className="text-3xl font-bold mt-1">{totalAppointments}</h3>
+              </div>
               <div className="bg-blue-400 bg-opacity-30 p-3 rounded-full">
                 <FaCalendarAlt className="text-2xl" />
               </div>
             </div>
           </div>
         </Card>
-        
+        {/* Scheduled */}
+        <Card className="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white">
+          <div className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-indigo-100 text-sm font-medium">Scheduled</p>
+                <h3 className="text-3xl font-bold mt-1">{scheduled}</h3>
+              </div>
+              <div className="bg-indigo-400 bg-opacity-30 p-3 rounded-full">
+                <FaCalendar className="text-2xl" />
+              </div>
+            </div>
+          </div>
+        </Card>
         {/* Completed */}
         <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
           <div className="p-6">
             <div className="flex items-center justify-between">
-            <div>
+              <div>
                 <p className="text-green-100 text-sm font-medium">Completed</p>
-                <h3 className="text-3xl font-bold mt-1">{appointmentAnalytics.totalCompleted}</h3>
-                <p className="text-green-100 text-sm mt-2 flex items-center">
-                  <FaArrowUp className="mr-1" /> 
-                  {analytics?.growthRate?.completed || 0}% from last period
-              </p>
-            </div>
+                <h3 className="text-3xl font-bold mt-1">{completed}</h3>
+              </div>
               <div className="bg-green-400 bg-opacity-30 p-3 rounded-full">
                 <FaCheckCircle className="text-2xl" />
               </div>
             </div>
           </div>
         </Card>
-        
-        {/* Utilization Rate */}
-        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+        {/* Cancelled */}
+        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
           <div className="p-6">
             <div className="flex items-center justify-between">
-            <div>
-                <p className="text-purple-100 text-sm font-medium">Utilization Rate</p>
-                <h3 className="text-3xl font-bold mt-1">{utilizationRate}%</h3>
-                <p className="text-purple-100 text-sm mt-2 flex items-center">
-                  <FaClock className="mr-1" /> 
-                  {averageDuration} min avg duration
-              </p>
-            </div>
-              <div className="bg-purple-400 bg-opacity-30 p-3 rounded-full">
-                <FaUsers className="text-2xl" />
+              <div>
+                <p className="text-red-100 text-sm font-medium">Cancelled</p>
+                <h3 className="text-3xl font-bold mt-1">{cancelled}</h3>
+              </div>
+              <div className="bg-red-400 bg-opacity-30 p-3 rounded-full">
+                <FaTimesCircle className="text-2xl" />
               </div>
             </div>
           </div>
         </Card>
-        
-        {/* Revenue */}
+        {/* No Show */}
         <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
           <div className="p-6">
             <div className="flex items-center justify-between">
-            <div>
-                <p className="text-yellow-100 text-sm font-medium">Revenue</p>
-                <h3 className="text-3xl font-bold mt-1">${revenueMetrics.total.toLocaleString()}</h3>
-                <p className="text-yellow-100 text-sm mt-2 flex items-center">
-                  {revenueMetrics.trend > 0 ? <FaArrowUp className="mr-1" /> : <FaArrowDown className="mr-1" />}
-                  {Math.abs(revenueMetrics.trend).toFixed(1)}% trend
-              </p>
-            </div>
+              <div>
+                <p className="text-yellow-100 text-sm font-medium">No Show</p>
+                <h3 className="text-3xl font-bold mt-1">{noShow}</h3>
+              </div>
               <div className="bg-yellow-400 bg-opacity-30 p-3 rounded-full">
-                <FaDollarSign className="text-2xl" />
+                <FaExclamationTriangle className="text-2xl" />
               </div>
             </div>
           </div>
@@ -354,9 +420,9 @@ const AppointmentDashboard = () => {
             <div className="h-80">
               <Doughnut 
                 data={{
-                  labels: appointmentAnalytics.appointmentsByStatus.labels,
+                  labels: statusLabels,
                   datasets: [{
-                    data: appointmentAnalytics.appointmentsByStatus.data,
+                    data: statusData,
                     backgroundColor: ['#3B82F6', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6'],
                     borderWidth: 2,
                     borderColor: '#fff'
@@ -365,11 +431,7 @@ const AppointmentDashboard = () => {
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'bottom'
-                    }
-                  }
+                  plugins: { legend: { position: 'bottom' } }
                 }}
               />
             </div>
@@ -383,38 +445,20 @@ const AppointmentDashboard = () => {
             <div className="h-80">
               <Line 
                 data={{
-                  labels: appointmentAnalytics.appointmentTrend.labels,
-                  datasets: [
-                    {
-                      label: 'Scheduled',
-                      data: appointmentAnalytics.appointmentTrend.scheduled || [],
-                      borderColor: '#3B82F6',
-                      backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                      tension: 0.3
-                    },
-                    {
-                      label: 'Completed',
-                      data: appointmentAnalytics.appointmentTrend.completed || [],
-                      borderColor: '#10B981',
-                      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                      tension: 0.3
-                    }
-                  ]
+                  labels: trendLabels,
+                  datasets: [{
+                    label: 'Appointments',
+                    data: trendData,
+                    borderColor: '#3B82F6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.3
+                  }]
                 }}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
-                  scales: {
-                    y: {
-                      beginAtZero: true,
-                      ticks: { precision: 0 }
-                    }
-                  },
-                  plugins: {
-                    legend: {
-                      position: 'top'
-                    }
-                  }
+                  scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+                  plugins: { legend: { position: 'top' } }
                 }}
               />
             </div>
@@ -422,19 +466,18 @@ const AppointmentDashboard = () => {
         </Card>
       </div>
 
-      {/* Performance Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Doctor Performance */}
+      {/* Doctor Performance */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <div className="p-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Doctor Performance</h3>
             <div className="h-80">
               <Bar 
                 data={{
-                  labels: appointmentAnalytics.appointmentsByDoctor.labels,
+                  labels: doctorLabels,
                   datasets: [{
                     label: 'Appointments',
-                    data: appointmentAnalytics.appointmentsByDoctor.data,
+                    data: doctorData,
                     backgroundColor: 'rgba(59, 130, 246, 0.8)',
                     borderColor: '#3B82F6',
                     borderWidth: 1
@@ -443,100 +486,56 @@ const AppointmentDashboard = () => {
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
-                  scales: {
-                    y: {
-                      beginAtZero: true,
-                      ticks: { precision: 0 }
-                    }
-                  }
+                  scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
                 }}
               />
             </div>
           </div>
         </Card>
-
-        {/* Patient Satisfaction */}
+        {/* Appointments by Service Type */}
         <Card>
           <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Patient Satisfaction</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Appointments by Service Type</h3>
             <div className="h-80">
-              <Radar 
+              <Bar 
                 data={{
-                  labels: ['Timeliness', 'Communication', 'Care Quality', 'Facility', 'Overall'],
+                  labels: serviceTypeLabels,
                   datasets: [{
-                    label: 'Satisfaction Score',
-                    data: analytics?.satisfactionScores || [85, 90, 88, 82, 87],
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                    borderColor: '#3B82F6',
-                    borderWidth: 2,
-                    pointBackgroundColor: '#3B82F6'
+                    label: 'Appointments',
+                    data: serviceTypeData,
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    borderColor: '#10B981',
+                    borderWidth: 1
                   }]
                 }}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
-                  scales: {
-                    r: {
-                      beginAtZero: true,
-                      max: 100
-                    }
-                  }
+                  scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
                 }}
               />
             </div>
           </div>
         </Card>
-
-        {/* Revenue Analysis */}
-        <Card>
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Revenue Analysis</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Total Revenue</span>
-                <span className="font-semibold">${revenueMetrics.total.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Average per Appointment</span>
-                <span className="font-semibold">${revenueMetrics.average.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Growth Trend</span>
-                <span className={`font-semibold ${revenueMetrics.trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {revenueMetrics.trend > 0 ? '+' : ''}{revenueMetrics.trend.toFixed(1)}%
-                </span>
-              </div>
-              <div className="pt-4">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full" 
-                    style={{ width: `${Math.min(100, Math.max(0, utilizationRate))}%` }}
-                  ></div>
-                </div>
-                <p className="text-sm text-gray-500 mt-1">Capacity Utilization</p>
-              </div>
-            </div>
-          </div>
-        </Card>
       </div>
-      
+
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Appointments */}
         <Card>
           <div className="p-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Appointments</h3>
-            {appointmentAnalytics.recentAppointments.length > 0 ? (
+            {recent.length > 0 ? (
               <div className="space-y-3">
-                {appointmentAnalytics.recentAppointments.slice(0, 5).map((appointment, index) => (
+                {recent.slice(0, 5).map((appointment, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                         <FaUser className="text-blue-600 text-sm" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{appointment.patientName}</p>
-                        <p className="text-sm text-gray-500">{moment(appointment.date).format('MMM DD, h:mm A')}</p>
+                        <p className="font-medium text-gray-900">{appointment.patientName || appointment.patientId?.name || 'Unknown'}</p>
+                        <p className="text-sm text-gray-500">{moment(appointment.startTime || appointment.date).format('MMM DD, h:mm A')}</p>
                       </div>
                     </div>
                     <Badge className={
@@ -560,18 +559,18 @@ const AppointmentDashboard = () => {
         <Card>
           <div className="p-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Upcoming Appointments</h3>
-            {appointmentAnalytics.upcomingAppointments.length > 0 ? (
+            {upcoming.length > 0 ? (
               <div className="space-y-3">
-                {appointmentAnalytics.upcomingAppointments.slice(0, 5).map((appointment, index) => (
+                {upcoming.slice(0, 5).map((appointment, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                         <FaCalendarAlt className="text-green-600 text-sm" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{appointment.patientName}</p>
+                        <p className="font-medium text-gray-900">{appointment.patientName || appointment.patientId?.name || 'Unknown'}</p>
                         <p className="text-sm text-gray-500">
-                          {moment(appointment.date).format('MMM DD, h:mm A')} • Dr. {appointment.doctorName}
+                          {moment(appointment.startTime || appointment.date).format('MMM DD, h:mm A')} • Dr. {appointment.doctorName || appointment.doctorId?.name || 'Unknown'}
                         </p>
                       </div>
                     </div>

@@ -11,6 +11,7 @@ const Input = forwardRef(({
   suffix,
   containerClassName = '',
   labelClassName = '',
+  multiline,
   ...props
 }, ref) => {
   const baseInputClasses = 'block w-full rounded-md shadow-sm transition-colors duration-200 px-2 py-2';
@@ -41,20 +42,37 @@ const Input = forwardRef(({
           </div>
         )}
 
-        <input
-          ref={ref}
-          type={type}
-          className={`
-            ${baseInputClasses}
-            ${variantClasses}
-            ${prefix ? 'pl-8' : ''}
-            ${suffix ? 'pr-8' : ''}
-            ${className}
-          `}
-          aria-invalid={error ? 'true' : 'false'}
-          aria-describedby={props.id ? `${props.id}-error` : undefined}
-          {...props}
-        />
+        {props.multiline ? (
+          <textarea
+            ref={ref}
+            className={`
+              ${baseInputClasses}
+              ${variantClasses}
+              ${prefix ? 'pl-8' : ''}
+              ${suffix ? 'pr-8' : ''}
+              ${className}
+            `}
+            aria-invalid={error ? 'true' : 'false'}
+            aria-describedby={props.id ? `${props.id}-error` : undefined}
+            rows={props.rows || 3}
+            {...props}
+          />
+        ) : (
+          <input
+            ref={ref}
+            type={type}
+            className={`
+              ${baseInputClasses}
+              ${variantClasses}
+              ${prefix ? 'pl-8' : ''}
+              ${suffix ? 'pr-8' : ''}
+              ${className}
+            `}
+            aria-invalid={error ? 'true' : 'false'}
+            aria-describedby={props.id ? `${props.id}-error` : undefined}
+            {...props}
+          />
+        )}
 
         {suffix && (
           <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">

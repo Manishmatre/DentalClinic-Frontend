@@ -3,7 +3,6 @@ import { Route, Routes } from 'react-router-dom';
 
 // Billing Pages
 import BillList from '../pages/billing/BillList';
-import BillForm from '../pages/billing/BillForm';
 import BillingDashboard from '../pages/billing/BillingDashboard';
 
 // Auth
@@ -16,8 +15,6 @@ const BillingRoutes = () => {
       <Route element={<ProtectedRoute requiredRoles={['Admin', 'Staff', 'Doctor', 'Receptionist']} />}>
         <Route path="/" element={<BillingDashboard />} />
         <Route path="/bills" element={<BillList />} />
-        <Route path="/new" element={<BillForm />} />
-        <Route path="/:id" element={<BillForm />} />
       </Route>
     </Routes>
   );

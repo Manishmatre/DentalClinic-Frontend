@@ -104,7 +104,7 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
         {/* Base tooth shape with color from TOOTH_CONDITIONS */}
         <path 
           d={getToothPath()} 
-          fill={baseColor}
+          fill={baseColor} 
           stroke="#666" 
           strokeWidth="0.5"
           filter={`url(#toothShadow-${toothNumber})`}

@@ -1,516 +1,556 @@
-import React, { useState, useEffect } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { toast } from 'react-toastify';
-import { FaFileInvoiceDollar, FaSearch, FaSave, FaTrash } from 'react-icons/fa';
-import dentalService from '../../api/dental/dentalService';
-import billingService from '../../api/billing/billingService';
-import Input from '../ui/Input';
+import React, { useEffect, useState } from 'react';
+import { FaSearch, FaFileExport, FaPrint, FaEdit, FaTrash, FaEye, FaFileInvoiceDollar, FaRupeeSign, FaUserMd } from 'react-icons/fa';
+import { CSVLink } from 'react-csv';
 import Button from '../ui/Button';
-import Card from '../ui/Card';
+import Badge from '../ui/Badge';
+import Tooltip from '../ui/Tooltip';
+import billService from '../../api/billing/billService';
+import Modal from '../ui/Modal';
+import DentalBillDetails from './DentalBillDetails';
+import { useAuth } from '../../context/AuthContext';
+import doctorService from '../../api/doctors/doctorService';
+import patientService from '../../api/patients/patientService';
+import serviceService from '../../api/services/serviceService';
 
-// CDT Code categories with common dental procedures
-const CDT_CATEGORIES = [
-  { id: 'diagnostic', name: 'Diagnostic', codes: [
-    { code: 'D0120', description: 'Periodic oral evaluation', fee: 50 },
-    { code: 'D0140', description: 'Limited oral evaluation - problem focused', fee: 65 },
-    { code: 'D0150', description: 'Comprehensive oral evaluation', fee: 85 },
-    { code: 'D0210', description: 'Intraoral - complete series of radiographic images', fee: 120 },
-    { code: 'D0220', description: 'Intraoral - periapical first radiographic image', fee: 30 },
-    { code: 'D0230', description: 'Intraoral - periapical each additional radiographic image', fee: 25 },
-    { code: 'D0274', description: 'Bitewings - four radiographic images', fee: 60 },
-    { code: 'D0330', description: 'Panoramic radiographic image', fee: 95 }
-  ]},
-  { id: 'preventive', name: 'Preventive', codes: [
-    { code: 'D1110', description: 'Prophylaxis - adult', fee: 85 },
-    { code: 'D1120', description: 'Prophylaxis - child', fee: 65 },
-    { code: 'D1206', description: 'Topical application of fluoride varnish', fee: 35 },
-    { code: 'D1351', description: 'Sealant - per tooth', fee: 45 },
-    { code: 'D1354', description: 'Interim caries arresting medicament application - per tooth', fee: 35 }
-  ]},
-  { id: 'restorative', name: 'Restorative', codes: [
-    { code: 'D2140', description: 'Amalgam - one surface, primary or permanent', fee: 120 },
-    { code: 'D2150', description: 'Amalgam - two surfaces, primary or permanent', fee: 150 },
-    { code: 'D2160', description: 'Amalgam - three surfaces, primary or permanent', fee: 180 },
-    { code: 'D2330', description: 'Resin-based composite - one surface, anterior', fee: 135 },
-    { code: 'D2331', description: 'Resin-based composite - two surfaces, anterior', fee: 165 },
-    { code: 'D2332', description: 'Resin-based composite - three surfaces, anterior', fee: 195 },
-    { code: 'D2391', description: 'Resin-based composite - one surface, posterior', fee: 140 },
-    { code: 'D2392', description: 'Resin-based composite - two surfaces, posterior', fee: 175 },
-    { code: 'D2393', description: 'Resin-based composite - three surfaces, posterior', fee: 210 },
-    { code: 'D2740', description: 'Crown - porcelain/ceramic', fee: 1050 },
-    { code: 'D2750', description: 'Crown - porcelain fused to high noble metal', fee: 950 },
-    { code: 'D2950', description: 'Core buildup, including any pins when required', fee: 200 }
-  ]},
-  { id: 'endodontics', name: 'Endodontics', codes: [
-    { code: 'D3220', description: 'Therapeutic pulpotomy', fee: 150 },
-    { code: 'D3310', description: 'Endodontic therapy, anterior tooth', fee: 700 },
-    { code: 'D3320', description: 'Endodontic therapy, premolar tooth', fee: 825 },
-    { code: 'D3330', description: 'Endodontic therapy, molar tooth', fee: 975 }
-  ]},
-  { id: 'periodontics', name: 'Periodontics', codes: [
-    { code: 'D4341', description: 'Periodontal scaling and root planing - four or more teeth per quadrant', fee: 225 },
-    { code: 'D4342', description: 'Periodontal scaling and root planing - one to three teeth per quadrant', fee: 165 },
-    { code: 'D4910', description: 'Periodontal maintenance', fee: 110 }
-  ]},
-  { id: 'prosthodontics', name: 'Prosthodontics', codes: [
-    { code: 'D5110', description: 'Complete denture - maxillary', fee: 1500 },
-    { code: 'D5120', description: 'Complete denture - mandibular', fee: 1500 },
-    { code: 'D5213', description: 'Maxillary partial denture - cast metal framework', fee: 1650 },
-    { code: 'D5214', description: 'Mandibular partial denture - cast metal framework', fee: 1650 }
-  ]},
-  { id: 'oral_surgery', name: 'Oral Surgery', codes: [
-    { code: 'D7140', description: 'Extraction, erupted tooth or exposed root', fee: 150 },
-    { code: 'D7210', description: 'Extraction, erupted tooth requiring removal of bone', fee: 225 },
-    { code: 'D7220', description: 'Removal of impacted tooth - soft tissue', fee: 275 },
-    { code: 'D7230', description: 'Removal of impacted tooth - partially bony', fee: 350 },
-    { code: 'D7240', description: 'Removal of impacted tooth - completely bony', fee: 425 }
-  ]}
-];
-
-// Zod schema for validation
-const billingSchema = z.object({
-  patientId: z.string().min(1, 'Patient is required'),
-  services: z.array(
-    z.object({
-      code: z.string().min(1, 'Procedure code is required'),
-      description: z.string().min(1, 'Description is required'),
-      fee: z.number().min(0, 'Fee must be a positive number'),
-      quantity: z.number().min(1, 'Quantity must be at least 1'),
-      toothNumber: z.number().optional().nullable()
-    })
-  ).min(1, 'At least one service is required'),
-  discount: z.number().min(0, 'Discount must be a positive number').max(100, 'Discount cannot exceed 100%').optional(),
-  notes: z.string().optional(),
-});
-
-const DentalBilling = ({ patientId, treatmentId, onComplete }) => {
-  const [loading, setLoading] = useState(true);
-  const [patient, setPatient] = useState(null);
-  const [treatment, setTreatment] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState('diagnostic');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCode, setSelectedCode] = useState(null);
-  const [quantity, setQuantity] = useState(1);
-
-  const {
-    register,
-    control,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors }
-  } = useForm({
-    resolver: zodResolver(billingSchema),
-    defaultValues: {
+// Accept bills, loading, error as props for admin mode
+const DentalBillList = ({ patientId, readOnly, bills: billsProp, loading: loadingProp, error: errorProp }) => {
+  // If billsProp is provided, use it; otherwise, manage local state
+  const [bills, setBills] = useState(billsProp || []);
+  const [loading, setLoading] = useState(loadingProp ?? true);
+  const [error, setError] = useState(errorProp ?? null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [billsPerPage, setBillsPerPage] = useState(10);
+  const [billsPage, setBillsPage] = useState(1);
+  const [selectedBill, setSelectedBill] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [payMode, setPayMode] = useState(false);
+  const [refreshingBill, setRefreshingBill] = useState(false);
+  const { user } = useAuth();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [form, setForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    dueDate: '',
+    doctorId: user?.role === 'Doctor' ? user._id : '',
       patientId: patientId || '',
-      services: [],
-      discount: 0,
-      notes: ''
-    }
+    appointmentId: '',
+    notes: '',
+    items: [
+      { name: '', quantity: 1, unitPrice: 0, discount: 0, tax: 0 }
+    ],
   });
+  const [doctors, setDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [services, setServices] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [formError, setFormError] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'services'
-  });
-
-  const watchedServices = watch('services');
-  const watchedDiscount = watch('discount');
-
-  // Fetch patient and treatment data
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-
-        // Fetch patient data
-        try {
-          const patientData = await dentalService.getPatientById(patientId);
-          setPatient(patientData);
-        } catch (error) {
-          console.error('Error fetching patient data:', error);
-          setPatient(null);
-        }
-
-        // Fetch treatment data if treatmentId provided
-        if (treatmentId) {
-          try {
-            const treatmentData = await dentalService.getTreatmentById(treatmentId);
-            setTreatment(treatmentData);
-
-            // If treatment has procedure code, pre-select it
-            if (treatmentData.procedureCode) {
-              const code = findCodeByValue(treatmentData.procedureCode);
-              if (code) {
-                setSelectedCode(code);
-                setSelectedCategory(getCategoryForCode(code.code));
-                append({
-                  code: code.code,
-                  description: code.description,
-                  fee: code.fee,
-                  quantity: 1,
-                  toothNumber: treatmentData.toothNumber || null
-                });
-              }
-            }
-          } catch (error) {
-            console.error('Error fetching treatment data:', error);
-            setTreatment(null);
-          }
-        }
-
-        setLoading(false);
-      } catch (error) {
-        console.error('Error initializing DentalBilling:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [patientId, treatmentId, append]);
-
-  // Find a CDT code by its value
-  const findCodeByValue = (codeValue) => {
-    for (const category of CDT_CATEGORIES) {
-      const code = category.codes.find(c => c.code === codeValue);
-      if (code) return code;
+    if (billsProp) {
+      setBills(billsProp);
+      setLoading(loadingProp ?? false);
+      setError(errorProp ?? null);
+      return;
     }
-    return null;
-  };
-
-  // Get category ID for a code
-  const getCategoryForCode = (codeValue) => {
-    for (const category of CDT_CATEGORIES) {
-      if (category.codes.some(c => c.code === codeValue)) {
-        return category.id;
-      }
+    // Fetch doctors, patients, services, appointments
+    doctorService.getDoctors().then(data => setDoctors(data?.doctors || data || []));
+    patientService.getPatients().then(setPatients);
+    serviceService.getServices().then(data => {
+      // Accepts array or object with array property
+      if (Array.isArray(data)) setServices(data);
+      else if (Array.isArray(data?.services)) setServices(data.services);
+      else if (Array.isArray(data?.data)) setServices(data.data);
+      else setServices([]);
+    });
+    // Optionally fetch appointments for patient
+    if (patientId) {
+      // Replace with actual appointment fetch if available
     }
-    return 'diagnostic'; // Default
+  }, [patientId, billsProp, loadingProp, errorProp]);
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setForm(f => ({ ...f, [name]: value }));
   };
-
-  // Filter codes based on search term
-  const filteredCodes = searchTerm
-    ? CDT_CATEGORIES.flatMap(cat => cat.codes).filter(
-        code =>
-          code.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          code.description.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : CDT_CATEGORIES.find(cat => cat.id === selectedCategory)?.codes || [];
-
-  // Calculate subtotal
-  const calculateSubtotal = () => {
-    return watchedServices.reduce((sum, item) => sum + (item.fee * item.quantity), 0);
+  const handleItemChange = (idx, field, value) => {
+    setForm(f => {
+      const items = [...f.items];
+      items[idx][field] = value;
+      return { ...f, items };
+    });
   };
-
-  // Calculate discount amount
-  const calculateDiscountAmount = () => {
-    return (calculateSubtotal() * (watchedDiscount || 0)) / 100;
-  };
-
-  // Calculate total after discount
-  const calculateTotal = () => {
-    return calculateSubtotal() - calculateDiscountAmount();
-  };
-
-  // Add a billing item
   const handleAddItem = () => {
-    if (!selectedCode) {
-      toast.error('Please select a procedure code');
-      return;
-    }
-
-    // Check if code already exists in services
-    const existingIndex = fields.findIndex(field => field.code === selectedCode.code);
-    if (existingIndex >= 0) {
-      // Update quantity of existing item
-      const currentQuantity = fields[existingIndex].quantity || 1;
-      setValue(`services.${existingIndex}.quantity`, currentQuantity + quantity);
-    } else {
-      // Append new service
-      append({
-        code: selectedCode.code,
-        description: selectedCode.description,
-        fee: selectedCode.fee,
-        quantity,
-        toothNumber: treatment ? treatment.toothNumber : null
-      });
-    }
-
-    setQuantity(1);
+    setForm(f => ({ ...f, items: [...f.items, { name: '', quantity: 1, unitPrice: 0, discount: 0, tax: 0 }] }));
   };
-
-  // Remove a billing item
-  const handleRemoveItem = (index) => {
-    remove(index);
+  const handleRemoveItem = (idx) => {
+    setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   };
-
-  // Submit form handler
-  const onSubmit = async (data) => {
-    if (data.services.length === 0) {
-      toast.error('Please add at least one service');
-      return;
-    }
-
+  const handleFormCancel = () => {
+    setShowAddForm(false);
+    setForm({
+      date: new Date().toISOString().split('T')[0],
+      dueDate: '',
+      doctorId: user?.role === 'Doctor' ? user._id : '',
+      patientId: patientId || '',
+      appointmentId: '',
+      notes: '',
+      items: [
+        { name: '', quantity: 1, unitPrice: 0, discount: 0, tax: 0 }
+      ],
+    });
+    setFormError(null);
+  };
+  const handleFormSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
     try {
-      setLoading(true);
-
-      const invoiceData = {
-        patientId: data.patientId,
-        doctorId: treatment?.doctorId || null,
-        clinicId: patient?.clinicId || null,
-        appointmentId: treatment?.appointmentId || null,
-        services: data.services.map(s => ({
-          code: s.code,
-          description: s.description,
-          cost: s.fee,
-          quantity: s.quantity,
-          toothNumber: s.toothNumber
+      // Validate
+      if (!form.patientId || !form.doctorId || form.items.length === 0 || !form.items[0].name) {
+        setFormError('Please fill all required fields');
+        setSaving(false);
+      return;
+    }
+      const payload = {
+        ...form,
+        items: form.items.map(item => ({
+          name: item.name,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unitPrice),
+          discount: Number(item.discount),
+          tax: Number(item.tax)
         })),
-        subtotal: calculateSubtotal(),
-        discount: data.discount || 0,
-        tax: 0,
-        total: calculateTotal(),
-        paymentMethod: 'Cash',
-        paymentStatus: 'Pending',
-        notes: data.notes || ''
       };
+      await billService.createBill(payload);
+      setShowAddForm(false);
+      handleFormCancel();
+      fetchBills();
+    } catch (err) {
+      setFormError('Failed to save bill');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      const response = await billingService.createInvoice(invoiceData);
-
-      toast.success('Invoice created successfully');
-      if (onComplete) onComplete(response._id);
-    } catch (error) {
-      console.error('Error creating invoice:', error);
-      toast.error('Failed to create invoice');
+  // Fetch bills only if not in admin mode
+  const fetchBills = async () => {
+    if (billsProp) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await billService.getPatientBills(patientId);
+      setBills(Array.isArray(res.bills) ? res.bills : []);
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  useEffect(() => { if (patientId && !billsProp) fetchBills(); }, [patientId, billsProp]);
+
+  const handleDelete = async (billId) => {
+    if (!window.confirm('Delete this bill?')) return;
+    await billService.deleteBill(billId);
+    fetchBills();
+  };
+
+  const handlePaymentSuccess = async () => {
+    setRefreshingBill(true);
+    // Refetch bills and update selectedBill
+    await fetchBills();
+    if (selectedBill?._id) {
+      const updated = await billService.getBillById(selectedBill._id);
+      setSelectedBill(updated);
+    }
+    setRefreshingBill(false);
+  };
+
+  // Filter, search, and paginate
+  const filteredBills = bills.filter(bill => {
+    if (statusFilter !== 'all' && bill.paymentStatus !== statusFilter) return false;
+    if (search) {
+      const s = search.toLowerCase();
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
+        (bill.invoiceNumber && bill.invoiceNumber.toLowerCase().includes(s)) ||
+        (bill.doctorId?.name && bill.doctorId.name.toLowerCase().includes(s))
+      );
+    }
+    return true;
+  });
+  const totalPages = Math.ceil(filteredBills.length / billsPerPage) || 1;
+  const paginatedBills = filteredBills.slice((billsPage - 1) * billsPerPage, billsPage * billsPerPage);
+
+  useEffect(() => { setBillsPage(1); }, [search, statusFilter, billsPerPage]);
+
+  // CSV Export
+  const csvData = filteredBills.map(bill => ({
+    Date: bill.createdAt ? new Date(bill.createdAt).toLocaleDateString() : '-',
+    'Invoice #': bill.billNumber || `BILL-${bill._id.substring(0, 8)}`,
+    Doctor: bill.doctorId?.userId?.name || bill.doctorId?.name || bill.doctorId || 'N/A',
+    Amount: bill.totalAmount || 0,
+    Status: bill.status || '-',
+    Notes: bill.notes || ''
+  }));
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
-      <Card
-        title={<span className="flex items-center"><FaFileInvoiceDollar className="mr-2 text-green-500" /> Dental Billing</span>}
-        actions={
-          <Button type="submit" variant="primary" loading={loading} icon={<FaSave />}>
-            Save & Create Invoice
-          </Button>
-        }
-        className="mb-6 overflow-hidden"
-      >
-        {/* Patient Information */}
-        <Card title="Patient Information" className="mb-4" bodyClassName="bg-blue-50">
-          <p className="font-medium">{patient?.name || 'Unknown'}</p>
-          <p className="text-sm text-gray-600">ID: {patient?._id || patientId}</p>
-        </Card>
-        {/* Treatment Information */}
-        {treatment && (
-          <Card title="Treatment Information" className="mb-4" bodyClassName="bg-gray-50">
-            <p className="font-medium">{treatment.procedure || 'N/A'}</p>
-            <p className="text-sm text-gray-600">Tooth Number: {treatment.toothNumber || 'N/A'}</p>
-            <p className="text-sm text-gray-600">Date: {treatment.date ? new Date(treatment.date).toLocaleDateString() : 'N/A'}</p>
-            {treatment.notes && <p className="text-sm mt-2">{treatment.notes}</p>}
-          </Card>
-        )}
-        {/* Procedure Code Selection */}
-        <Card title="Select Procedure Code" className="mb-4">
-          <div className="mb-4 flex">
-            <Input
-              type="text"
-              className="w-full"
-              placeholder="Search for procedure code or description..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              prefix={<FaSearch className="text-gray-400" />}
-            />
-            <select
-              className="ml-2 p-2 border rounded"
-              value={selectedCategory}
-              onChange={(e) => {
-                setSelectedCategory(e.target.value);
-                setSearchTerm('');
-              }}
-              disabled={searchTerm !== ''}
-            >
-              {CDT_CATEGORIES.map(category => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg max-h-60 overflow-y-auto mb-4">
-            <table className="min-w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="py-2 px-4 text-left">Code</th>
-                  <th className="py-2 px-4 text-left">Description</th>
-                  <th className="py-2 px-4 text-right">Fee</th>
-                  <th className="py-2 px-4 text-center">Select</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCodes.length > 0 ? (
-                  filteredCodes.map((code) => (
-                    <tr
-                      key={code.code}
-                      className={selectedCode?.code === code.code ? 'bg-blue-50' : ''}
-                    >
-                      <td className="py-2 px-4">{code.code}</td>
-                      <td className="py-2 px-4">{code.description}</td>
-                      <td className="py-2 px-4 text-right">${code.fee.toFixed(2)}</td>
-                      <td className="py-2 px-4 text-center">
-                        <Button
-                          type="button"
-                          variant={selectedCode?.code === code.code ? 'primary' : 'secondary'}
-                          size="sm"
-                          className="px-2"
-                          onClick={() => setSelectedCode(code)}
-                        >
-                          {selectedCode?.code === code.code ? 'Selected' : 'Select'}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" className="py-4 text-center text-gray-500">
-                      No procedures found
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {selectedCode && (
-            <div className="bg-blue-50 p-4 rounded-lg mb-4 flex flex-col md:flex-row justify-between items-center">
+    <div>
+      {/* Add Bill Form only opens from header bar button */}
+      {!readOnly && showAddForm && (
+        <div className="bg-white border border-blue-100 rounded-lg p-6 mb-6 shadow-md animate-fade-in space-y-6">
+          <form onSubmit={handleFormSave}>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+              {/* Date */}
               <div>
-                <p className="font-bold">{selectedCode.code}</p>
-                <p>{selectedCode.description}</p>
-                <p className="text-blue-700">${selectedCode.fee.toFixed(2)}</p>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date <span className="text-red-500">*</span></label>
+                <input type="date" name="date" value={form.date} onChange={handleFormChange} required className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" />
               </div>
-              <div className="flex items-center mt-2 md:mt-0">
-                <label className="mr-2">Quantity:</label>
-                <Input
-                  type="number"
-                  min="1"
-                  className="w-16 text-center"
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                />
-                <Button className="ml-4" onClick={handleAddItem} variant="success" size="sm">
-                  Add
-                </Button>
+              {/* Due Date */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                <input type="date" name="dueDate" value={form.dueDate} onChange={handleFormChange} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" />
+              </div>
+              {/* Doctor Dropdown */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Doctor <span className="text-red-500">*</span></label>
+                <select name="doctorId" value={form.doctorId} onChange={handleFormChange} required className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2">
+                  <option value="">Select Doctor</option>
+                  {doctors.map(doc => <option key={doc._id} value={doc._id}>{doc.name}</option>)}
+                </select>
+              </div>
+              {/* Appointment Dropdown (optional) */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Appointment</label>
+                <select name="appointmentId" value={form.appointmentId} onChange={handleFormChange} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2">
+                  <option value="">Select Appointment</option>
+                  {appointments.map(app => <option key={app._id} value={app._id}>{app.date} - {app.reason}</option>)}
+                </select>
               </div>
             </div>
+            {/* Bill Items */}
+            <div className="mb-6">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Bill Items <span className="text-red-500">*</span></label>
+              {form.items.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4 items-end border-b pb-4">
+                  <div>
+                    <select placeholder="Service/Item" value={item.name} onChange={e => handleItemChange(idx, 'name', e.target.value)} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" required>
+                      <option value="">Select Service</option>
+                      {services.map(s => <option key={s._id} value={s.name}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <input type="number" min={1} value={item.quantity} onChange={e => handleItemChange(idx, 'quantity', e.target.value)} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" placeholder="Qty" required />
+                  </div>
+                  <div>
+                    <input type="number" min={0} value={item.unitPrice} onChange={e => handleItemChange(idx, 'unitPrice', e.target.value)} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" placeholder="Unit Price" required />
+                  </div>
+                  <div>
+                    <input type="number" min={0} value={item.discount} onChange={e => handleItemChange(idx, 'discount', e.target.value)} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" placeholder="Discount" />
+                  </div>
+                  <div>
+                    <input type="number" min={0} value={item.tax} onChange={e => handleItemChange(idx, 'tax', e.target.value)} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" placeholder="Tax" />
+                  </div>
+                  <div>
+                    <Button type="button" variant="danger" size="sm" onClick={() => handleRemoveItem(idx)}>Remove</Button>
+                  </div>
+                </div>
+              ))}
+              <Button type="button" variant="outline" onClick={handleAddItem}>+ Add Item</Button>
+            </div>
+            {/* Notes */}
+            <div className="mb-6">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+              <textarea name="notes" value={form.notes} onChange={handleFormChange} className="w-full border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm px-3 py-2" rows={2} />
+            </div>
+            {formError && <div className="text-red-500 mb-2">{formError}</div>}
+            <div className="flex justify-end gap-2 items-center">
+              <Button type="button" variant="secondary" onClick={handleFormCancel}>Cancel</Button>
+              <Button type="submit" variant="primary" loading={saving}>Save Bill</Button>
+            </div>
+          </form>
+        </div>
+      )}
+      {/* Header Bar */}
+      <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
+        <div className="flex items-center space-x-2 w-full md:w-auto">
+          <div className="relative flex-grow md:flex-grow-0 md:w-64">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <FaSearch className="text-gray-400" />
+            </div>
+            <input
+              type="text"
+              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              placeholder="Search bills..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setBillsPage(1); }}
+            />
+          </div>
+            <select
+            className="block w-full md:w-auto pl-3 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setBillsPage(1); }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="Paid">Paid</option>
+            <option value="Pending">Pending</option>
+            <option value="Partial">Partial</option>
+            <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+        <div className="flex space-x-2 items-center">
+          <label htmlFor="billsPerPage" className="text-xs text-gray-500 mr-1">Rows per page:</label>
+          <select
+            id="billsPerPage"
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+            value={billsPerPage}
+            onChange={e => { setBillsPerPage(Number(e.target.value)); setBillsPage(1); }}
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={filteredBills.length}>Show All</option>
+          </select>
+          <CSVLink
+            data={csvData}
+            filename="dental_bills.csv"
+            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <FaFileExport className="mr-2" /> Export
+          </CSVLink>
+                        <Button
+            variant="outline"
+                          size="sm"
+            onClick={() => window.print()}
+            icon={<FaPrint />}
+                        >
+            Print
+                        </Button>
+          {!readOnly && (
+            <Button variant="primary" size="sm" onClick={() => setShowAddForm(true)}>
+              + Add Bill
+                </Button>
           )}
-        </Card>
-        {/* Billing Items */}
-        <Card title="Billing Items" className="mb-4">
-          {fields.length > 0 ? (
+          {/* Add Bill button removed; AddBillForm will be rendered inline below */}
+        </div>
+      </div>
+      {/* Table */}
+      {loading ? (
+        <div className="text-center py-8 text-gray-400">Loading...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-400">{error}</div>
+      ) : paginatedBills.length === 0 ? (
+        <div className="text-gray-400 text-center py-8">No bills found</div>
+      ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full bg-white border rounded-lg overflow-hidden">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="py-2 px-4 text-left font-semibold">Code</th>
-                    <th className="py-2 px-4 text-left font-semibold">Description</th>
-                    <th className="py-2 px-4 text-center font-semibold">Tooth #</th>
-                    <th className="py-2 px-4 text-right font-semibold">Fee</th>
-                    <th className="py-2 px-4 text-center font-semibold">Qty</th>
-                    <th className="py-2 px-4 text-right font-semibold">Total</th>
-                    <th className="py-2 px-4 text-center font-semibold">Action</th>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {fields.map((item, index) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-2 px-4 border-b">{item.code}</td>
-                      <td className="py-2 px-4 border-b">{item.description}</td>
-                      <td className="py-2 px-4 border-b text-center">{item.toothNumber ?? 'N/A'}</td>
-                      <td className="py-2 px-4 border-b text-right">${item.fee.toFixed(2)}</td>
-                      <td className="py-2 px-4 border-b text-center">
-                        <Input
-                          type="number"
-                          min="1"
-                          className="w-14 text-center py-1 px-2 text-sm border-gray-300 rounded"
-                          style={{ minWidth: 0 }}
-                          {...register(`services.${index}.quantity`, { valueAsNumber: true })}
+            <tbody className="bg-white divide-y divide-gray-200">
+              {paginatedBills.map((bill) => (
+                <tr key={bill._id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{bill.createdAt ? new Date(bill.createdAt).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div className="flex items-center">
+                      <FaFileInvoiceDollar className="h-5 w-5 text-green-600 mr-2" />
+                      {bill.billNumber || `BILL-${bill._id.substring(0, 8)}`}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div className="flex items-center">
+                      <FaUserMd className="h-5 w-5 text-indigo-500 mr-2" />
+                      <Tooltip content={`Doctor ID: ${bill.doctorId?._id || bill.doctorId || 'Unknown'}`}>
+                        <span>
+                          {bill.doctorId?.userId?.name || bill.doctorId?.name || bill.doctorId || 'N/A'}
+                        </span>
+                      </Tooltip>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div className="flex items-center">
+                      <FaRupeeSign className="mr-1 text-green-500" />
+                      {(bill.totalAmount || 0).toFixed(2)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div className="flex items-center">
+                      <FaRupeeSign className="mr-1 text-blue-500" />
+                      {(bill.paidAmount || 0).toFixed(2)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div className="flex items-center">
+                      <FaRupeeSign className="mr-1 text-red-500" />
+                      {(bill.balanceAmount || 0).toFixed(2)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <Badge
+                      text={bill.status || '-'}
+                      variant={bill.status === 'paid' ? 'success' : bill.status === 'pending' ? 'warning' : bill.status === 'partially_paid' ? 'primary' : bill.status === 'cancelled' ? 'danger' : 'secondary'}
+                      pill
                         />
                       </td>
-                      <td className="py-2 px-4 border-b text-right font-semibold">${(item.fee * (watchedServices[index]?.quantity || 1)).toFixed(2)}</td>
-                      <td className="py-2 px-4 border-b text-center">
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleRemoveItem(index)}
-                          className="p-2"
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.notes || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                    <div className="flex justify-center items-center space-x-2">
+                      <button
+                        onClick={() => { setSelectedBill(bill); setShowDetailsModal(true); }}
+                        className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center"
+                        title="View Bill"
+                      >
+                        <FaEye size={16} />
+                      </button>
+                      {!readOnly && (
+                        <button
+                          onClick={() => { setSelectedBill(bill); setShowDetailsModal(true); }}
+                          className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center"
+                          title="Edit Bill"
                         >
-                          <FaTrash />
+                          <FaEdit size={16} />
+                        </button>
+                      )}
+                      {!readOnly && (
+                        <button
+                          onClick={() => handleDelete(bill._id)}
+                          className="text-red-600 hover:text-red-900 transition-colors duration-200 flex items-center"
+                          title="Delete Bill"
+                        >
+                          <FaTrash size={16} />
+                        </button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        className="!px-2 !py-1"
+                        onClick={() => window.print()}
+                        title="Print Bill"
+                        icon={<FaPrint size={14} className="mr-1" />}
+                      >
+                        Print
+                      </Button>
+                      {bill.balanceAmount > 0 && (
+                        <Button
+                          variant="primary"
+                          size="xs"
+                          className="!px-2 !py-1"
+                          onClick={() => { setSelectedBill(bill); setPayMode(true); setShowDetailsModal(true); }}
+                          title="Pay Bill"
+                        >
+                          Pay
                         </Button>
+                      )}
+                    </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500">
-              No billing items added yet
+      )}
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+          <div className="flex-1 flex justify-between sm:hidden">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBillsPage(billsPage - 1)}
+              disabled={billsPage === 1}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBillsPage(billsPage + 1)}
+              disabled={billsPage === totalPages}
+            >
+              Next
+            </Button>
             </div>
-          )}
-        </Card>
-        {/* Additional Information and Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card title="Additional Information" className="mb-4">
-            <Input
-              label="Discount (%)"
-              type="number"
-              min={0}
-              max={100}
-              {...register('discount', { valueAsNumber: true })}
-              error={errors.discount?.message}
-            />
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea
-                {...register('notes')}
-                rows={4}
-                className="w-full p-2 border rounded-md"
-                placeholder="Add any notes or special instructions..."
-              />
+          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{(billsPage - 1) * billsPerPage + 1}</span> to{' '}
+                <span className="font-medium">{Math.min(billsPage * billsPerPage, filteredBills.length)}</span>{' '}
+                of <span className="font-medium">{filteredBills.length}</span> results
+              </p>
             </div>
-          </Card>
-          <Card title="Summary" className="mb-4 border border-gray-200 bg-gray-50" bodyClassName="p-6">
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between text-base">
-                <span>Subtotal:</span>
-                <span className="font-medium">${calculateSubtotal().toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-base">
-                <span>Discount:</span>
-                <span className="font-medium">-${calculateDiscountAmount().toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg mt-2 border-t pt-2">
-                <span>Total:</span>
-                <span>${calculateTotal().toFixed(2)}</span>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <button
+                  onClick={() => setBillsPage(billsPage - 1)}
+                  disabled={billsPage === 1}
+                  className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
+                    billsPage === 1
+                      ? 'text-gray-300 cursor-not-allowed'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="sr-only">Previous</span>
+                  <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {[...Array(totalPages).keys()].map(number => (
+                  <button
+                    key={number + 1}
+                    onClick={() => setBillsPage(number + 1)}
+                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                      billsPage === number + 1
+                        ? 'z-10 bg-indigo-50 border-indigo-500 text-indigo-600'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {number + 1}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setBillsPage(billsPage + 1)}
+                  disabled={billsPage === totalPages}
+                  className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
+                    billsPage === totalPages
+                      ? 'text-gray-300 cursor-not-allowed'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="sr-only">Next</span>
+                  <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
               </div>
             </div>
-          </Card>
         </div>
-      </Card>
-    </form>
+      )}
+      {/* AddBillForm will be rendered inline below */}
+      {/* Bill Details Modal */}
+      {showDetailsModal && selectedBill && (
+        <Modal isOpen={showDetailsModal} onClose={() => { setShowDetailsModal(false); setPayMode(false); }} title="Bill Details" size="lg">
+          <DentalBillDetails
+            bill={selectedBill}
+            onClose={() => { setShowDetailsModal(false); setPayMode(false); }}
+            payMode={payMode}
+            onPaymentSuccess={handlePaymentSuccess}
+          />
+        </Modal>
+      )}
+    </div>
   );
 };
 
-export default DentalBilling;
+export default DentalBillList;

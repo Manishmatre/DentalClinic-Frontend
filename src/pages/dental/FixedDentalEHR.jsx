@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FaTooth, FaHistory, FaImage, FaChartBar, FaFileInvoiceDollar, FaPrint, FaFilePdf, FaArrowLeft, FaCalendarAlt, FaFileMedical, FaIdCard, FaVenusMars, FaPhone } from 'react-icons/fa';
+import { FaTooth, FaHistory, FaImage, FaChartBar, FaFileInvoiceDollar, FaPrint, FaFilePdf, FaArrowLeft, FaCalendarAlt, FaFileMedical, FaIdCard, FaVenusMars, FaPhone, FaSearch, FaFileExport } from 'react-icons/fa';
 // Import enhanced components
 import AdvancedToothChart from '../../components/dental/AdvancedToothChart';
 import EnhancedDentalImaging from '../../components/dental/EnhancedDentalImaging';
@@ -15,6 +15,8 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Tabs from '../../components/ui/Tabs';
 import { FaPlus, FaEdit, FaTrash, FaCheck } from 'react-icons/fa';
+import { CSVLink } from 'react-csv';
+import TreatmentList from '../../components/dental/TreatmentList';
 
 const FixedDentalEHR = () => {
   const { patientId } = useParams();
@@ -22,7 +24,10 @@ const FixedDentalEHR = () => {
   const { user } = useAuth();
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('chart');
+  const [activeTab, setActiveTab] = useState(() => {
+    // Try to restore from localStorage
+    return localStorage.getItem('dentalEHRActiveTab') || 'chart';
+  });
   const [treatmentTab, setTreatmentTab] = useState('plan'); // 'plan' or 'management'
   const [treatments, setTreatments] = useState([]);
   const [treatmentsLoading, setTreatmentsLoading] = useState(true);
@@ -39,13 +44,60 @@ const FixedDentalEHR = () => {
   });
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleDateString());
 
+  // At the top of the component, add new state for search/filter/pagination/sort
+  const [treatmentSearch, setTreatmentSearch] = useState('');
+  const [treatmentStatusFilter, setTreatmentStatusFilter] = useState('all');
+  const [treatmentApprovalFilter, setTreatmentApprovalFilter] = useState('all');
+  const [treatmentSort, setTreatmentSort] = useState({ key: 'date', direction: 'desc' });
+  const [treatmentsPerPage, setTreatmentsPerPage] = useState(10);
+  const [treatmentsPage, setTreatmentsPage] = useState(1);
+
+  // Filter, search, sort, and paginate treatments
+  const filteredTreatments = treatments
+    .filter(t => (t.patientApprovalStatus === 'approved' || t.status === 'completed'))
+    .filter(t =>
+      (!treatmentSearch ||
+        t.procedure?.toLowerCase().includes(treatmentSearch.toLowerCase()) ||
+        t.doctor?.name?.toLowerCase().includes(treatmentSearch.toLowerCase()) ||
+        t.notes?.toLowerCase().includes(treatmentSearch.toLowerCase()) ||
+        String(t.toothNumber).includes(treatmentSearch)
+      ) &&
+      (treatmentStatusFilter === 'all' || t.status === treatmentStatusFilter) &&
+      (treatmentApprovalFilter === 'all' || t.patientApprovalStatus === treatmentApprovalFilter)
+    );
+  const sortedTreatments = [...filteredTreatments].sort((a, b) => {
+    let aValue = a[treatmentSort.key];
+    let bValue = b[treatmentSort.key];
+    if (treatmentSort.key === 'date') {
+      aValue = new Date(a.date);
+      bValue = new Date(b.date);
+    }
+    if (aValue < bValue) return treatmentSort.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return treatmentSort.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+  const totalPages = Math.ceil(sortedTreatments.length / treatmentsPerPage);
+  const paginatedTreatments = sortedTreatments.slice((treatmentsPage - 1) * treatmentsPerPage, treatmentsPage * treatmentsPerPage);
+
+  // Export CSV data
+  const csvData = sortedTreatments.map(t => ({
+    Date: new Date(t.date).toLocaleDateString(),
+    'Tooth #': t.toothNumber,
+    Procedure: t.procedure,
+    Doctor: t.doctor?.name || t.doctor || '-',
+    Cost: t.finalCost || t.cost || 0,
+    Status: t.status,
+    Approval: t.patientApprovalStatus,
+    Notes: t.notes || ''
+  }));
+
   // Fetch treatments on mount or patientId change
   useEffect(() => {
     const fetchTreatments = async () => {
       setTreatmentsLoading(true);
       setTreatmentsError(null);
       try {
-        const data = await dentalService.getPatientTreatments(patientId);
+        const data = await dentalService.getPatientDentalTreatments(patientId);
         setTreatments(data || []);
       } catch (err) {
         setTreatmentsError('Failed to load treatments');
@@ -151,8 +203,29 @@ const FixedDentalEHR = () => {
     }
   }, [patientId]);
 
+  // Persist activeTab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('dentalEHRActiveTab', activeTab);
+  }, [activeTab]);
+
   // Check if user has permission to access dental EHR
   const canEditDental = user && ['Admin', 'Doctor'].includes(user.role);
+
+  // Determine clinicId as a string for TreatmentList
+  let clinicIdStr = null;
+  if (user && user.clinicId) {
+    clinicIdStr = typeof user.clinicId === 'object' ? user.clinicId._id || user.clinicId.id : user.clinicId;
+  }
+  if (!clinicIdStr) {
+    const clinicData = localStorage.getItem('clinicData');
+    if (clinicData) {
+      try {
+        const parsed = JSON.parse(clinicData);
+        clinicIdStr = parsed._id || parsed.id;
+      } catch {}
+    }
+  }
+  console.log('DEBUG: user.clinicId:', user?.clinicId, 'clinicIdStr:', clinicIdStr);
 
   if (loading) {
     return (
@@ -179,7 +252,7 @@ const FixedDentalEHR = () => {
 
   const dentalTabs = [
     { id: 'chart', label: 'Tooth Chart', icon: <FaTooth /> },
-    { id: 'treatment-management', label: 'Treatment Management', icon: <FaHistory /> },
+    { id: 'treatment-management', label: 'Treatments', icon: <FaHistory /> },
     { id: 'images', label: 'Dental Images', icon: <FaImage /> },
     { id: 'reports', label: 'Reports', icon: <FaChartBar /> },
     { id: 'prescriptions', label: 'Prescriptions', icon: <FaFileMedical /> },
@@ -255,120 +328,15 @@ const FixedDentalEHR = () => {
             <AdvancedToothChart patientId={patientId} readOnly={!canEditDental} />
           )}
           {activeTab === 'treatment-management' && (
-            <div>
-              <div className="flex justify-between items-center border-b border-gray-200 mb-4">
-                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                  <button
-                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                    onClick={() => setTreatmentTab('plan')}
-                  >
-                    Treatment Plan
-                  </button>
-                  <button
-                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'management' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                    onClick={() => setTreatmentTab('management')}
-                  >
-                    Treatment Management
-                  </button>
-                </nav>
-                {treatmentTab === 'plan' && (
-                  <Button variant="primary" size="sm" className="ml-4" onClick={openAddModal}>
-                    <FaPlus className="mr-1" /> Add Treatment
-                  </Button>
-                )}
-              </div>
-              {/* Tab Content */}
-              {treatmentsLoading ? (
-                <div className="text-center py-8 text-gray-400">Loading...</div>
-              ) : treatmentsError ? (
-                <div className="text-center py-8 text-red-400">{treatmentsError}</div>
-              ) : treatmentTab === 'plan' ? (
-                treatments.filter(t => t.status === 'planned').length === 0 ? (
-                  <div className="text-gray-400 text-center py-8">No planned treatments</div>
-                ) : (
-                  <div className="space-y-2">
-                    {treatments.filter(t => t.status === 'planned').map((t) => (
-                      <Card key={t._id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4">
-                        <div>
-                          <div className="font-medium text-gray-700">{t.procedure}</div>
-                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
-                          {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
-                        </div>
-                        <div className="flex gap-2 mt-2 md:mt-0">
-                          <Button size="sm" variant="primary" onClick={() => openEditModal(t)}><FaEdit /></Button>
-                          <Button size="sm" variant="danger" onClick={() => handleDelete(t._id)}><FaTrash /></Button>
-                          <Button size="sm" variant="success" onClick={() => handleMarkCompleted(t._id)}><FaCheck /> Complete</Button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )
-              ) : (
-                treatments.filter(t => t.status === 'completed').length === 0 ? (
-                  <div className="text-gray-400 text-center py-8">No completed treatments</div>
-                ) : (
-                  <div className="space-y-2">
-                    {treatments.filter(t => t.status === 'completed').map((t) => (
-                      <Card key={t._id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4">
-                        <div>
-                          <div className="font-medium text-gray-700">{t.procedure}</div>
-                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
-                          {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
-                        </div>
-                        <div className="flex gap-2 mt-2 md:mt-0">
-                          <Button size="sm" variant="primary" onClick={() => openEditModal(t)}><FaEdit /></Button>
-                          <Button size="sm" variant="danger" onClick={() => handleDelete(t._id)}><FaTrash /></Button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )
-              )}
-              {/* Modal for add/edit */}
-              {showTreatmentModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold">{editTreatment ? 'Edit Treatment' : 'Add Treatment'}</h3>
-                      <button className="text-gray-500 hover:text-gray-700" onClick={closeModal}>×</button>
-                    </div>
-                    <form onSubmit={handleModalSubmit} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Procedure *</label>
-                        <input type="text" className="w-full border rounded px-2 py-1" required value={modalForm.procedure} onChange={e => setModalForm(f => ({ ...f, procedure: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Tooth Number *</label>
-                        <input type="number" className="w-full border rounded px-2 py-1" required value={modalForm.toothNumber} onChange={e => setModalForm(f => ({ ...f, toothNumber: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Date *</label>
-                        <input type="date" className="w-full border rounded px-2 py-1" required value={modalForm.date} onChange={e => setModalForm(f => ({ ...f, date: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Notes</label>
-                        <textarea className="w-full border rounded px-2 py-1" rows={2} value={modalForm.notes} onChange={e => setModalForm(f => ({ ...f, notes: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Cost ($)</label>
-                        <input type="number" className="w-full border rounded px-2 py-1" value={modalForm.cost} onChange={e => setModalForm(f => ({ ...f, cost: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Status</label>
-                        <select className="w-full border rounded px-2 py-1" value={modalForm.status} onChange={e => setModalForm(f => ({ ...f, status: e.target.value }))}>
-                          <option value="planned">Planned</option>
-                          <option value="completed">Completed</option>
-                        </select>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
-                        <Button type="submit" variant="primary">{editTreatment ? 'Update' : 'Add'}</Button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-            </div>
+            <TreatmentList
+              treatments={treatments}
+              loading={treatmentsLoading}
+              error={treatmentsError}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+              patientId={patientId}
+              clinicId={clinicIdStr}
+            />
           )}
           {activeTab === 'images' && (
             <EnhancedDentalImaging patientId={patientId} readOnly={!canEditDental} />

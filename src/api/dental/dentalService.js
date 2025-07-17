@@ -81,7 +81,20 @@ export const getDentalPatients = async (queryParams = {}) => {
 export const getPatientDentalChart = async (patientId) => {
   try {
     const response = await client.get(`/dental/patients/${patientId}/chart`);
-    return response.data.data;
+    // Normalize response: always return { chart, teeth } with chart._id and teeth as object
+    let data = response.data.data;
+    let chart = data?.chart || data;
+    let chartId = chart?._id || chart?.id;
+    let teeth = data?.teeth || data?.teethRecords || data?.teethData || {};
+    // If teeth is array, convert to object
+    if (Array.isArray(teeth)) {
+      const teethObj = {};
+      teeth.forEach(tr => {
+        teethObj[tr.toothNumber] = tr;
+      });
+      teeth = teethObj;
+    }
+    return { chart: { ...chart, _id: chartId }, teeth };
   } catch (error) {
     console.error('Error fetching dental chart:', error);
     throw error;
@@ -106,36 +119,62 @@ export const updateToothRecord = async (chartId, toothNumber, toothData) => {
 };
 
 /**
- * Add treatment to tooth
- * @param {string} chartId - Chart ID
- * @param {number} toothNumber - Tooth number
- * @param {Object} treatmentData - Treatment data
- * @returns {Promise} - Promise with updated tooth record
+ * Create a new dental treatment (plan or completed)
+ * @param {Object} treatmentData - Treatment data (include patientApprovalStatus if needed)
+ * @returns {Promise} - Promise with created treatment data
  */
-export const addTreatment = async (chartId, toothNumber, treatmentData) => {
+export const createTreatment = async (treatmentData) => {
   try {
-    const response = await client.post(
-      `/dental/charts/${chartId}/teeth/${toothNumber}/treatments`, 
-      treatmentData
-    );
+    const response = await client.post('/dental/treatments', treatmentData);
     return response.data.data;
   } catch (error) {
-    console.error('Error adding treatment:', error);
+    console.error('Error creating dental treatment:', error);
     throw error;
   }
 };
 
 /**
- * Get all treatments for a patient
+ * Update a dental treatment
+ * @param {string} id - Treatment ID
+ * @param {Object} updateData - Updated treatment data (include patientApprovalStatus if needed)
+ * @returns {Promise} - Promise with updated treatment data
+ */
+export const updateTreatment = async (id, updateData) => {
+  try {
+    const response = await client.put(`/dental/treatments/${id}`, updateData);
+    return response.data.data;
+  } catch (error) {
+    console.error('Error updating dental treatment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all dental treatments for a patient
  * @param {string} patientId - Patient ID
  * @returns {Promise} - Promise with treatments data
  */
-export const getPatientTreatments = async (patientId) => {
+export const getPatientDentalTreatments = async (patientId) => {
   try {
-    const response = await client.get(`/dental/patients/${patientId}/treatments`);
+    const response = await client.get(`/dental/patients/${patientId}/dental-treatments`);
     return response.data.data;
   } catch (error) {
-    console.error('Error fetching treatments:', error);
+    console.error('Error fetching dental treatments:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a dental treatment
+ * @param {string} id - Treatment ID
+ * @returns {Promise} - Promise with success message
+ */
+export const deleteTreatment = async (id) => {
+  try {
+    const response = await client.delete(`/dental/treatments/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting dental treatment:', error);
     throw error;
   }
 };
@@ -225,11 +264,18 @@ export const deleteDentalImage = async (imageId) => {
   }
 };
 
+/**
+ * Alias for getPatientDentalTreatments for compatibility
+ */
+export const getPatientTreatments = getPatientDentalTreatments;
+
 const dentalService = {
   getPatientDentalChart,
   updateToothRecord,
-  addTreatment,
-  getPatientTreatments,
+  createTreatment,
+  updateTreatment,
+  getPatientDentalTreatments,
+  deleteTreatment,
   getPatientImages,
   uploadDentalImage,
   getDentalImage,

@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { FaUpload, FaTrash, FaEdit, FaEye, FaDownload } from 'react-icons/fa';
 import digitalImagingService from '../../services/digitalImagingService';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import Modal from '../ui/Modal';
+import Input from '../ui/Input';
 
 const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
   const [images, setImages] = useState([]);
@@ -16,6 +18,12 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
     imageType: '',
     notes: ''
   });
+  const [editImage, setEditImage] = useState(null);
+  const [editData, setEditData] = useState({ imageType: '', notes: '' });
+  const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef();
+  const [uploadError, setUploadError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   // Load images when component mounts or IDs change
   useEffect(() => {
@@ -45,34 +53,48 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
-      // Validate file type
       const validTypes = ['image/jpeg', 'image/png', 'image/dicom'];
       if (!validTypes.includes(file.type)) {
-        toast.error('Invalid file type. Please upload JPEG, PNG, or DICOM files.');
+        setUploadError('Invalid file type. Please upload JPEG, PNG, or DICOM files.');
         return;
       }
-      
-      // Validate file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
-        toast.error('File size too large. Maximum size is 10MB.');
+        setUploadError('File size too large. Maximum size is 10MB.');
         return;
       }
-      
       setUploadData(prev => ({ ...prev, file }));
+      setUploadError('');
+      setPreviewUrl(URL.createObjectURL(file));
     }
   };
-
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelect({ target: { files: e.dataTransfer.files } });
+    }
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+  const removeSelectedFile = () => {
+    setUploadData(prev => ({ ...prev, file: null }));
+    setPreviewUrl(null);
+  };
   const handleUpload = async () => {
     if (!uploadData.file) {
-      toast.error('Please select a file to upload');
+      setUploadError('Please select a file to upload');
       return;
     }
+    if (!uploadData.imageType) {
+      setUploadError('Please select an image type');
+      return;
+    }
+    setUploadError('');
 
     try {
       setIsUploading(true);
       const uploadedImage = await digitalImagingService.uploadImage({
         file: uploadData.file,
-        appointmentId,
         patientId,
         imageType: uploadData.imageType,
         notes: uploadData.notes
@@ -81,6 +103,7 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
       setImages(prev => [...prev, uploadedImage]);
       setShowUploadModal(false);
       setUploadData({ file: null, imageType: '', notes: '' });
+      setPreviewUrl(null);
       
       if (onImageUploaded) {
         onImageUploaded(uploadedImage);
@@ -114,31 +137,109 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
     setSelectedImage(image);
   };
 
+  const handleEdit = (image) => {
+    setEditImage(image);
+    setEditData({ imageType: image.imageType, notes: image.notes || '' });
+    setIsEditing(true);
+  };
+  const handleEditSave = async () => {
+    try {
+      const updated = await digitalImagingService.updateImageMetadata(editImage._id, editData);
+      setImages(prev => prev.map(img => img._id === updated._id ? updated : img));
+      setIsEditing(false);
+      setEditImage(null);
+      toast.success('Image updated successfully');
+    } catch (error) {
+      toast.error('Failed to update image');
+    }
+  };
+
   const renderUploadModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-medium mb-4">Upload Medical Image</h3>
-        
-        <div className="space-y-4">
+    <Modal isOpen={showUploadModal} onClose={() => { setShowUploadModal(false); setUploadError(''); setPreviewUrl(null); }} title="Upload Dental Image" size="sm">
+      <form onSubmit={e => { e.preventDefault(); handleUpload(); }} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Image File
-            </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Image File <span className="text-red-500">*</span></label>
+          <div
+            className="border-2 border-dashed border-gray-300 rounded-md p-4 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition bg-gray-50"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onClick={() => fileInputRef.current.click()}
+          >
+            {previewUrl ? (
+              <div className="relative w-32 h-32 mb-2">
+                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover rounded" />
+                <button type="button" onClick={removeSelectedFile} className="absolute top-0 right-0 bg-white rounded-full p-1 shadow text-red-500 hover:bg-red-100"><FaTrash /></button>
+              </div>
+            ) : (
+              <>
+                <FaUpload className="text-3xl text-gray-400 mb-2" />
+                <span className="text-gray-500">Drag & drop or click to select image</span>
+              </>
+            )}
             <input
               type="file"
               accept="image/jpeg,image/png,image/dicom"
               onChange={handleFileSelect}
-              className="w-full"
+              className="hidden"
+              ref={fileInputRef}
             />
           </div>
-          
+          {uploadError && <div className="text-red-500 text-sm mt-1">{uploadError}</div>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Image Type <span className="text-red-500">*</span></label>
+          <select
+            value={uploadData.imageType}
+            onChange={e => setUploadData(prev => ({ ...prev, imageType: e.target.value }))}
+            className="w-full border px-3 py-2 rounded"
+          >
+            <option value="">Select type...</option>
+            <option value="xray">X-Ray</option>
+            <option value="mri">MRI</option>
+            <option value="ct">CT Scan</option>
+            <option value="ultrasound">Ultrasound</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <Input
+          label="Notes"
+          type="textarea"
+          value={uploadData.notes}
+          onChange={e => setUploadData(prev => ({ ...prev, notes: e.target.value }))}
+          className="resize-none"
+          rows={3}
+          helperText="Add any notes about the image (optional)"
+        />
+        <div className="flex justify-end space-x-3 pt-2">
+          <Button
+            variant="secondary"
+            onClick={() => { setShowUploadModal(false); setUploadError(''); setPreviewUrl(null); }}
+            disabled={isUploading}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            isLoading={isUploading}
+            disabled={isUploading || !uploadData.file || !uploadData.imageType}
+          >
+            Upload
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+
+  const renderEditModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 className="text-lg font-medium mb-4">Edit Image Metadata</h3>
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Image Type
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Image Type</label>
             <select
-              value={uploadData.imageType}
-              onChange={(e) => setUploadData(prev => ({ ...prev, imageType: e.target.value }))}
+              value={editData.imageType}
+              onChange={e => setEditData(prev => ({ ...prev, imageType: e.target.value }))}
               className="w-full rounded-md border-gray-300"
             >
               <option value="">Select type...</option>
@@ -149,36 +250,20 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
               <option value="other">Other</option>
             </select>
           </div>
-          
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
             <textarea
-              value={uploadData.notes}
-              onChange={(e) => setUploadData(prev => ({ ...prev, notes: e.target.value }))}
+              value={editData.notes}
+              onChange={e => setEditData(prev => ({ ...prev, notes: e.target.value }))}
               className="w-full rounded-md border-gray-300"
               rows="3"
               placeholder="Add any notes about the image..."
             />
           </div>
         </div>
-        
         <div className="mt-6 flex justify-end space-x-3">
-          <Button
-            variant="outline"
-            onClick={() => setShowUploadModal(false)}
-            disabled={isUploading}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleUpload}
-            isLoading={isUploading}
-            disabled={isUploading || !uploadData.file}
-          >
-            Upload
-          </Button>
+          <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+          <Button onClick={handleEditSave} isLoading={false}>Save</Button>
         </div>
       </div>
     </div>
@@ -265,6 +350,13 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
                     </Button>
                     <Button
                       variant="icon"
+                      onClick={() => handleEdit(image)}
+                      className="bg-white text-blue-600 hover:bg-blue-50"
+                    >
+                      <FaEdit />
+                    </Button>
+                    <Button
+                      variant="icon"
                       onClick={() => handleDelete(image._id)}
                       className="bg-white text-red-600 hover:bg-red-50"
                     >
@@ -294,6 +386,7 @@ const ImageGallery = ({ appointmentId, patientId, onImageUploaded }) => {
 
       {showUploadModal && renderUploadModal()}
       {selectedImage && renderImageViewer()}
+      {isEditing && renderEditModal()}
     </div>
   );
 };

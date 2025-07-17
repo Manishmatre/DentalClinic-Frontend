@@ -68,6 +68,11 @@ client.interceptors.request.use(
         console.log('API Client: Added auth token to request');
       }
     }
+    // Add tenant header if present
+    const tenantId = localStorage.getItem('tenantId');
+    if (tenantId) {
+      config.headers['X-Tenant-ID'] = tenantId;
+    }
     return config;
   },
   (error) => {

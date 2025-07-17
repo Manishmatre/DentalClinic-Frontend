@@ -1,7 +1,7 @@
 // src/config.js
 
 // API URL configuration
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 // Other global configuration variables can be added here
 export const APP_NAME = 'Clinic Management System';

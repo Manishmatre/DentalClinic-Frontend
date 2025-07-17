@@ -144,10 +144,11 @@ function App() {
           <Route path="/admin/staff" element={<ManageStaff />} />
           <Route path="/admin/users" element={<UserManagement />} />
           <Route path="/admin/roles" element={<RoleManagement />} />
-          <Route path="/admin/appointment-management" element={<AppointmentManagement view="calendar" />} />
-          <Route path="/admin/appointment-list" element={<AppointmentManagement view="list" />} />
-          <Route path="/admin/appointment-requests" element={<AppointmentManagement view="requests" />} />
-          <Route path="/admin/appointment-settings" element={<AppointmentManagement view="settings" />} />
+          <Route path="/admin/appointment-management" element={<AppointmentManagement />} />
+          <Route path="/admin/appointment-management/dashboard" element={<AppointmentManagement initialTab="dashboard" />} />
+          <Route path="/admin/appointment-management/calendar" element={<AppointmentManagement initialTab="calendar" />} />
+          <Route path="/admin/appointment-management/list" element={<AppointmentManagement initialTab="list" />} />
+          <Route path="/admin/appointment-management/settings" element={<AppointmentManagement initialTab="settings" />} />
           {/* PatientsManagement route removed - functionality consolidated in PatientManagement */}
           {/* Static routes must come before dynamic routes with parameters */}
           <Route path="/admin/patients/add" element={<AddPatient />} />

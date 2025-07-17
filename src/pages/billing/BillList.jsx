@@ -40,6 +40,7 @@ import billService from '../../api/billing/billService';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import FilterDrawer from '../../components/common/FilterDrawer';
 import Pagination from '../../components/common/Pagination';
+import AddBillModal from '../../components/billing/AddBillModal';
 
 const BillList = () => {
   const navigate = useNavigate();
@@ -63,6 +64,7 @@ const BillList = () => {
   const filterDrawer = useDisclosure();
   const paymentModal = useDisclosure();
   const deleteAlert = useDisclosure();
+  const [addBillModalOpen, setAddBillModalOpen] = useState(false);
   
   // Refs
   const cancelRef = useRef();
@@ -199,26 +201,17 @@ const BillList = () => {
   return (
     <Box p={4}>
       <Flex justifyContent="space-between" alignItems="center" mb={6}>
-        <Heading size="lg">Billing Management</Heading>
+        <Heading size="lg">Dental Billing</Heading>
         <HStack>
-          <Button 
-            leftIcon={<FaFilter />} 
-            onClick={filterDrawer.onOpen}
-            colorScheme="teal"
-            variant="outline"
-          >
-            Filter
-          </Button>
           <Button 
             leftIcon={<FaPlus />} 
             colorScheme="blue"
-            onClick={() => navigate('/billing/new')}
+            onClick={() => setAddBillModalOpen(true)}
           >
-            Create Bill
+            Add Bill
           </Button>
         </HStack>
       </Flex>
-      
       {/* Quick Filters */}
       <Flex mb={4} flexWrap="wrap" gap={2}>
         <Input
@@ -248,78 +241,39 @@ const BillList = () => {
           Clear Filters
         </Button>
       </Flex>
-      
-      {/* Bills Table */}
-      <Box overflowX="auto" borderWidth="1px" borderRadius="lg" bg="white">
+      {/* Bill Table */}
+      <Box bg="white" rounded="lg" shadow="md" p={0} overflowX="auto">
         <Table variant="simple">
-          <Thead>
+          <Thead bg="gray.50">
             <Tr>
-              <Th>Bill #</Th>
-              <Th>Patient</Th>
               <Th>Date</Th>
-              <Th>Due Date</Th>
-              <Th isNumeric>Amount</Th>
-              <Th isNumeric>Paid</Th>
-              <Th isNumeric>Balance</Th>
+              <Th>Patient</Th>
+              <Th>Doctor</Th>
               <Th>Status</Th>
-              <Th>Actions</Th>
+              <Th isNumeric>Amount</Th>
+              <Th textAlign="right">Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
-            {bills.length === 0 ? (
-              <Tr>
-                <Td colSpan={9} textAlign="center">No bills found</Td>
-              </Tr>
+            {loading ? (
+              <Tr><Td colSpan={6}><LoadingSpinner /></Td></Tr>
+            ) : bills.length === 0 ? (
+              <Tr><Td colSpan={6} textAlign="center">No bills found</Td></Tr>
             ) : (
-              bills.map((bill) => (
-                <Tr key={bill._id}>
-                  <Td fontWeight="medium">{bill.billNumber}</Td>
-                  <Td>{bill.patientId?.name || 'N/A'}</Td>
-                  <Td>{formatDate(bill.billDate)}</Td>
-                  <Td>{formatDate(bill.dueDate)}</Td>
-                  <Td isNumeric>{billService.formatCurrency(bill.totalAmount)}</Td>
-                  <Td isNumeric>{billService.formatCurrency(bill.paidAmount)}</Td>
-                  <Td isNumeric>{billService.formatCurrency(bill.balanceAmount)}</Td>
+              bills.map(bill => (
+                <Tr key={bill._id} _hover={{ bg: 'gray.50' }}>
+                  <Td>{formatDate(bill.createdAt || bill.date)}</Td>
+                  <Td>{bill.patientId?.name || bill.patientName || 'N/A'}</Td>
+                  <Td>{bill.doctorId?.name || bill.doctorName || 'N/A'}</Td>
                   <Td>{getStatusBadge(bill.status)}</Td>
-                  <Td>
-                    <Menu>
-                      <MenuButton
-                        as={IconButton}
-                        icon={<FaEllipsisV />}
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Options"
-                      />
-                      <MenuList>
-                        <MenuItem 
-                          icon={<FaEdit />} 
-                          onClick={() => navigate(`/billing/${bill._id}`)}
-                        >
-                          Edit
-                        </MenuItem>
-                        <MenuItem 
-                          icon={<FaMoneyBillWave />} 
-                          onClick={() => handleAddPayment(bill)}
-                          isDisabled={bill.status === 'paid' || bill.status === 'cancelled'}
-                        >
-                          Add Payment
-                        </MenuItem>
-                        <MenuItem 
-                          icon={<FaFilePdf />} 
-                          onClick={() => billService.generateBillPdf(bill._id)}
-                        >
-                          Generate PDF
-                        </MenuItem>
-                        <MenuItem 
-                          icon={<FaTrash />} 
-                          onClick={() => handleDeleteClick(bill)}
-                          isDisabled={bill.status === 'paid' || bill.paidAmount > 0}
-                          color="red.500"
-                        >
-                          Delete
-                        </MenuItem>
-                      </MenuList>
-                    </Menu>
+                  <Td isNumeric fontWeight="bold">₹{bill.totalAmount?.toLocaleString() || bill.amount?.toLocaleString() || '0'}</Td>
+                  <Td textAlign="right">
+                    <HStack spacing={2} justify="flex-end">
+                      <IconButton icon={<FaFilePdf />} aria-label="Print" size="sm" onClick={() => navigate(`/billing/print/${bill._id}`)} />
+                      <IconButton icon={<FaEdit />} aria-label="Edit" size="sm" onClick={() => navigate(`/billing/edit/${bill._id}`)} />
+                      <IconButton icon={<FaMoneyBillWave />} aria-label="Add Payment" size="sm" onClick={() => handleAddPayment(bill)} />
+                      <IconButton icon={<FaTrash />} aria-label="Delete" size="sm" colorScheme="red" onClick={() => handleDeleteClick(bill)} />
+                    </HStack>
                   </Td>
                 </Tr>
               ))
@@ -327,81 +281,13 @@ const BillList = () => {
           </Tbody>
         </Table>
       </Box>
-      
       {/* Pagination */}
-      {bills.length > 0 && (
-        <Flex justifyContent="flex-end" mt={4}>
-          <Pagination
-            currentPage={pagination.page}
-            totalPages={pagination.pages}
-            onPageChange={handlePageChange}
-          />
-        </Flex>
-      )}
-      
-      {/* Filter Drawer */}
-      <FilterDrawer
-        isOpen={filterDrawer.isOpen}
-        onClose={filterDrawer.onClose}
-        onApply={() => {
-          filterDrawer.onClose();
-          setPagination(prev => ({ ...prev, page: 1 }));
-        }}
-      >
-        <VStack spacing={4} align="stretch">
-          <FormControl>
-            <FormLabel>Start Date</FormLabel>
-            <Input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => handleFilterChange('startDate', e.target.value)}
-            />
-          </FormControl>
-          
-          <FormControl>
-            <FormLabel>End Date</FormLabel>
-            <Input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => handleFilterChange('endDate', e.target.value)}
-            />
-          </FormControl>
-          
-          <FormControl>
-            <FormLabel>Status</FormLabel>
-            <Select
-              placeholder="All statuses"
-              value={filters.status}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-            >
-              <option value="draft">Draft</option>
-              <option value="pending">Pending</option>
-              <option value="partially_paid">Partially Paid</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-              <option value="cancelled">Cancelled</option>
-            </Select>
-          </FormControl>
-          
-          <FormControl>
-            <FormLabel>Items Per Page</FormLabel>
-            <Select
-              value={filters.limit}
-              onChange={(e) => handleFilterChange('limit', e.target.value)}
-            >
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
-            </Select>
-          </FormControl>
-          
-          <Button onClick={resetFilters} colorScheme="gray" size="sm">
-            Reset Filters
-          </Button>
-        </VStack>
-      </FilterDrawer>
-      
-      {/* Delete Confirmation Dialog */}
+      <Pagination
+        currentPage={pagination.page}
+        totalPages={pagination.pages}
+        onPageChange={handlePageChange}
+      />
+      {/* Delete Alert Dialog */}
       <AlertDialog
         isOpen={deleteAlert.isOpen}
         leastDestructiveRef={cancelRef}
@@ -409,25 +295,24 @@ const BillList = () => {
       >
         <AlertDialogOverlay>
           <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Bill
-            </AlertDialogHeader>
-
-            <AlertDialogBody>
-              Are you sure you want to delete this bill? This action cannot be undone.
-            </AlertDialogBody>
-
+            <AlertDialogHeader>Delete Bill</AlertDialogHeader>
+            <AlertDialogBody>Are you sure you want to delete this bill?</AlertDialogBody>
             <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={deleteAlert.onClose}>
-                Cancel
-              </Button>
-              <Button colorScheme="red" onClick={confirmDelete} ml={3}>
-                Delete
-              </Button>
+              <Button ref={cancelRef} onClick={deleteAlert.onClose}>Cancel</Button>
+              <Button colorScheme="red" onClick={confirmDelete} ml={3}>Delete</Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+      {/* Add Bill Modal */}
+      <AddBillModal
+        isOpen={addBillModalOpen}
+        onClose={() => setAddBillModalOpen(false)}
+        onBillCreated={() => {
+          setAddBillModalOpen(false);
+          fetchBills();
+        }}
+      />
     </Box>
   );
 };

@@ -23,7 +23,9 @@ import {
 import Button from '../ui/Button';
 
 const PatientDetailsModal = ({ isOpen, onClose, patient, onEdit }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('patientDetailsModalActiveTab') || 'overview';
+  });
   
   // If modal is not open or no patient, don't render anything
   if (!isOpen || !patient) return null;
@@ -48,6 +50,10 @@ const PatientDetailsModal = ({ isOpen, onClose, patient, onEdit }) => {
     
     return age;
   };
+
+  React.useEffect(() => {
+    localStorage.setItem('patientDetailsModalActiveTab', activeTab);
+  }, [activeTab]);
 
   return (
     <div className="fixed inset-0 z-[9999] overflow-y-auto" style={{ pointerEvents: 'auto' }}>

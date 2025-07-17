@@ -48,7 +48,9 @@ const StaffDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [staff, setStaff] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('staffDetailsActiveTab') || 'overview';
+  });
 
   // Tabs configuration
   const tabs = [
@@ -120,6 +122,10 @@ const StaffDetails = () => {
     
     fetchStaffData();
   }, [id]);
+
+  useEffect(() => {
+    localStorage.setItem('staffDetailsActiveTab', activeTab);
+  }, [activeTab]);
 
   // Helper function to format dates
   const formatDate = (dateString) => {

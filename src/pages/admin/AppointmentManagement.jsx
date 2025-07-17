@@ -31,14 +31,14 @@ import staffService from '../../api/staff/staffService';
 import patientService from '../../api/patients/patientService';
 import clinicService from "../../api/clinic/clinicService";
 
-const AppointmentManagement = () => {
+const AppointmentManagement = ({ initialTab }) => {
   const { user, clinic } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // State management
   const [clinicId, setClinicId] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'calendar', 'list', 'settings'
+  const [activeTab, setActiveTab] = useState(initialTab || 'dashboard'); // Use initialTab if provided
   const [appointments, setAppointments] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -88,7 +88,7 @@ const AppointmentManagement = () => {
     navigate(`/admin/appointment-management?tab=${tab}`, { replace: true });
   };
   
-  // Set active tab based on URL query parameter
+  // Set active tab based on URL query parameter or initialTab
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
@@ -96,11 +96,13 @@ const AppointmentManagement = () => {
     // Valid tab values: 'dashboard', 'calendar', 'list', 'settings'
     if (tabParam && ['dashboard', 'calendar', 'list', 'settings'].includes(tabParam)) {
       setActiveTab(tabParam);
+    } else if (initialTab) {
+      setActiveTab(initialTab);
     } else {
       // Default to dashboard if no valid tab is specified
       setActiveTab('dashboard');
     }
-  }, [location.search]);
+  }, [location.search, initialTab]);
 
   // Monitor clinic and user data changes
   useEffect(() => {
@@ -232,7 +234,7 @@ const AppointmentManagement = () => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 30);
       
-      // Pass params as an object
+      // Pass params as an object, always include clinicId
       const response = await appointmentService.getAppointmentStats({ clinicId, startDate, endDate });
       
       if (response.error) {
@@ -832,7 +834,7 @@ const AppointmentManagement = () => {
         /* Tab Content */
         <div>
           {activeTab === 'dashboard' && (
-            <AppointmentDashboard analytics={appointmentAnalytics} />
+            <AppointmentDashboard analytics={appointmentAnalytics} loading={isLoading} error={error} />
           )}
           {activeTab === 'calendar' && (
             <AppointmentCalendarTab

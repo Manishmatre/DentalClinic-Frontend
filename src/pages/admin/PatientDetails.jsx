@@ -36,7 +36,8 @@ import {
   FaPlus,
   FaFile,
   FaUpload,
-  FaTrash
+  FaTrash,
+  FaRupeeSign
 } from 'react-icons/fa';
 import patientService from '../../api/patients/patientService';
 import appointmentService from '../../api/appointments/appointmentService';
@@ -53,6 +54,10 @@ import Modal from '../../components/ui/Modal';
 import ExaminationFormModal from '../../components/patient/ExaminationFormModal';
 import ExaminationList from '../../components/patient/ExaminationList';
 import AppointmentList from '../../components/appointments/AppointmentList';
+import DocumentUpload from '../../components/patients/DocumentUpload';
+import DocumentList from '../../components/patients/DocumentList';
+import billService from '../../api/billing/billService';
+import dentalService from '../../api/dental/dentalService';
 
 const PatientDetails = () => {
   const { id } = useParams();
@@ -61,7 +66,9 @@ const PatientDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [patient, setPatient] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('patientDetailsActiveTab') || 'overview';
+  });
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -94,6 +101,34 @@ const PatientDetails = () => {
   const [examinationFormLoading, setExaminationFormLoading] = useState(false);
   const [showAppointmentDetailsModal, setShowAppointmentDetailsModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
+  // Add state for showing upload modal
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [dentalBills, setDentalBills] = useState([]);
+  const [dentalBillsLoading, setDentalBillsLoading] = useState(false);
+  const [treatments, setTreatments] = useState([]);
+  const [treatmentsLoading, setTreatmentsLoading] = useState(false);
+
+  // Calculate billing summary
+  // Use real billing data from API (invoices array or flat array)
+  const safeBillingRecords = Array.isArray(billingRecords?.invoices)
+    ? billingRecords.invoices
+    : Array.isArray(billingRecords)
+      ? billingRecords
+      : [];
+
+  // Overall summary (all bills, not just dental)
+  const totalTreatmentCost = safeBillingRecords.reduce((sum, bill) => sum + (bill.total || 0), 0);
+  const totalPaid = safeBillingRecords.reduce((sum, bill) => sum + (bill.paidAmount || 0), 0);
+  const totalBalance = totalTreatmentCost - totalPaid;
+
+  // Dental summary (from real dental bills fetched via billService)
+  const dentalTreatmentCost = dentalBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
+  const dentalPaid = dentalBills.reduce((sum, bill) => sum + (bill.paidAmount || 0), 0);
+  const dentalBalance = dentalBills.reduce((sum, bill) => sum + (bill.balanceAmount || (bill.totalAmount || 0) - (bill.paidAmount || 0)), 0);
+  // For now, Billed = totalTreatmentCost, Billed Balance = totalBalance (can be customized if needed)
+
+  // Calculate total treatment cost from treatments
+  const totalTreatmentCostFromTreatments = treatments.reduce((sum, t) => sum + (t.cost || t.amount || 0), 0);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: <FaUser /> },
@@ -313,6 +348,39 @@ const PatientDetails = () => {
         .finally(() => setExaminationsLoading(false));
     }
   }, [activeTab, id]);
+
+  // Load dental bills for the billing summary
+  useEffect(() => {
+    if (patient && patient._id) {
+      setDentalBillsLoading(true);
+      billService.getPatientBills(patient._id).then(res => {
+        setDentalBills(Array.isArray(res.bills) ? res.bills : []);
+        setDentalBillsLoading(false);
+      }).catch(() => {
+        setDentalBills([]);
+        setDentalBillsLoading(false);
+      });
+    }
+  }, [patient]);
+
+  // Load treatments for the treatment summary
+  useEffect(() => {
+    if (patient && patient._id) {
+      setTreatmentsLoading(true);
+      dentalService.getPatientDentalTreatments(patient._id).then(data => {
+        setTreatments(Array.isArray(data) ? data : []);
+        setTreatmentsLoading(false);
+      }).catch(() => {
+        setTreatments([]);
+        setTreatmentsLoading(false);
+      });
+    }
+  }, [patient]);
+
+  // Persist activeTab in localStorage
+  useEffect(() => {
+    localStorage.setItem('patientDetailsActiveTab', activeTab);
+  }, [activeTab]);
 
   // Helper function to format dates
   const formatDate = (dateString) => {
@@ -702,6 +770,39 @@ const PatientDetails = () => {
               <div className="flex items-center justify-center md:justify-start">
                 <FaCalendarAlt className="text-orange-500 mr-2" />
                 <span>DOB: {patient.dateOfBirth ? formatDate(patient.dateOfBirth) : 'Not provided'}</span>
+              </div>
+            </div>
+          </div>
+          {/* Billing Summary Card */}
+          <div className="w-full md:w-80 mt-6 md:mt-0 md:ml-8">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg shadow p-4 flex flex-col items-center">
+              <div className="text-lg font-semibold text-gray-700 mb-2 flex items-center">
+                <FaFileInvoiceDollar className="mr-2 text-indigo-500" /> Billing Summary
+              </div>
+              <div className="text-base text-gray-800 mb-1">
+                <span className="font-semibold">All Bills:</span>
+              </div>
+              <div className="text-sm text-gray-800 mb-1">
+                Treatment Cost (from Treatments): <span className="font-bold text-blue-700">INR {totalTreatmentCostFromTreatments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="text-sm text-gray-800 mb-1">
+                Paid: <span className="font-bold text-green-700">INR {totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="text-sm text-gray-800 mb-3">
+                Balance: <span className="font-bold text-red-700">INR {totalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="w-full border-t border-blue-200 my-2"></div>
+              <div className="text-base text-gray-800 mb-1">
+                <span className="font-semibold">Dental Bills:</span>
+              </div>
+              <div className="text-sm text-gray-800 mb-1">
+                Treatment Cost: <span className="font-bold text-blue-700">INR {dentalTreatmentCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="text-sm text-gray-800 mb-1">
+                Paid: <span className="font-bold text-green-700">INR {dentalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="text-sm text-gray-800">
+                Balance: <span className="font-bold text-red-700">INR {dentalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
           </div>
@@ -1129,54 +1230,22 @@ const PatientDetails = () => {
                   </h3>
                   <Button 
                     variant="primary" 
-                    onClick={() => toast.info('Document upload functionality coming soon')}
+                    onClick={() => setShowUploadModal(true)}
                     className="flex items-center"
                   >
                     <FaUpload className="mr-2" /> Upload Document
                   </Button>
                 </div>
-                
                 <div className="p-4">
-                  {documentsLoading ? (
-                    <div className="flex justify-center items-center py-8">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
-                      <p className="ml-3 text-gray-600">Loading documents...</p>
-                    </div>
-                  ) : documents && documents.length > 0 ? (
-                    <div className="space-y-4">
-                      {documents.map((doc, index) => (
-                        <div key={index} className="p-4 border rounded-lg bg-white shadow-sm">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center">
-                              <FaFileAlt className="text-blue-500 mr-2" />
-                              <div>
-                                <h4 className="font-medium">{doc.name}</h4>
-                                <p className="text-sm text-gray-500">{formatDate(doc.uploadDate)}</p>
-                              </div>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownloadDocument(doc._id, doc.name)}
-                              className="flex items-center"
-                            >
-                              <FaFilePdf className="mr-1" /> Download
-                            </Button>
-                          </div>
-                          {doc.description && (
-                            <p className="mt-2 text-gray-700">{doc.description}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-center text-gray-500 bg-gray-50 rounded-lg">
-                      <FaFileAlt className="mx-auto text-gray-400 text-4xl mb-2" />
-                      <p>No documents available</p>
-                    </div>
-                  )}
+                  <DocumentList patientId={id} onDocumentDelete={handleUploadComplete} />
                 </div>
               </div>
+              {/* Upload Modal */}
+              {showUploadModal && (
+                <Modal isOpen={showUploadModal} onClose={() => setShowUploadModal(false)} title="Upload Document">
+                  <DocumentUpload patientId={id} onUploadComplete={() => { setShowUploadModal(false); handleUploadComplete(); }} />
+                </Modal>
+              )}
             </div>
           )}
         </div>

@@ -13,22 +13,18 @@ class DigitalImagingService {
    * @param {string} params.notes - Additional notes about the image
    * @returns {Promise<Object>} Uploaded image data
    */
-  async uploadImage({ file, appointmentId, patientId, imageType, notes }) {
+    async uploadImage({ file, patientId, imageType, notes, description }) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('appointmentId', appointmentId);
-      formData.append('patientId', patientId);
-      formData.append('imageType', imageType);
-      formData.append('notes', notes);
-
+      formData.append('image', file); // always use 'image' as the field name
+      formData.append('type', imageType); // must be 'type' for backend
+      if (description) formData.append('description', description);
+      if (notes) formData.append('notes', notes);
       const headers = getAuthHeaders();
       headers['Content-Type'] = 'multipart/form-data';
-
-      const response = await axios.post(`${API_URL}/images/upload`, formData, {
+      const response = await axios.post(`${API_URL}/dental/patients/${patientId}/images`, formData, {
         headers
       });
-
       return response.data;
     } catch (error) {
       console.error('Error uploading image:', error);

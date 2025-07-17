@@ -33,9 +33,7 @@ const Billing = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-900">Billing & Payments</h1>
-        <Button onClick={() => window.location.href = '/receptionist/billing/new'}>
-          + Create New Bill
-        </Button>
+        {/* Replace with a modal trigger or remove if not needed. */}
       </div>
 
       {error && (

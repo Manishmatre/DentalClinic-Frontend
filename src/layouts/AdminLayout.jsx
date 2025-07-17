@@ -440,16 +440,6 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
       ]
     },
     {
-      title: 'Dental EHR',
-      items: [
-        { path: '/admin/dental-ehr', label: 'Dental EHR Dashboard', icon: icons.dashboard },
-        { path: '/admin/dental-ehr/clinical-notes', label: 'Clinical Notes', icon: icons.treatment },
-        { path: '/admin/dental-ehr/attachments', label: 'Attachments', icon: icons.dentalImaging },
-        { path: '/admin/dental-ehr/diagnosis', label: 'Diagnosis', icon: icons.dentalHistory },
-        { path: '/admin/dental-ehr/chart', label: 'Dental Chart', icon: icons.tooth },
-      ]
-    },
-    {
       title: 'Reports & Analytics',
       items: [
         { path: '/admin/reports', label: 'Reports', icon: icons.reports },

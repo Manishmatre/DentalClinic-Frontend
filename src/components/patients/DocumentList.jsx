@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import documentService from '../../api/documents/documentService';
+import { documentService } from '../../api/documents/documentService';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';

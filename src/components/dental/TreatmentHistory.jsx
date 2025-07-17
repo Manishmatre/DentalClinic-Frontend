@@ -138,31 +138,31 @@ const TreatmentHistory = ({ patientId }) => {
             </Button>
             {showFilterDropdown && (
               <div className="absolute z-10 mt-2 w-40 bg-white border border-gray-200 rounded shadow-lg">
-                <button
+          <button
                   className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filter === 'all' ? 'text-indigo-600 font-semibold' : ''}`}
                   onClick={() => { setFilter('all'); setShowFilterDropdown(false); }}
-                >
-                  All Time
-                </button>
-                <button
+          >
+            All Time
+          </button>
+          <button
                   className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filter === 'recent' ? 'text-indigo-600 font-semibold' : ''}`}
                   onClick={() => { setFilter('recent'); setShowFilterDropdown(false); }}
-                >
-                  Last 30 Days
-                </button>
-                <button
+          >
+            Last 30 Days
+          </button>
+          <button
                   className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filter === '6months' ? 'text-indigo-600 font-semibold' : ''}`}
                   onClick={() => { setFilter('6months'); setShowFilterDropdown(false); }}
-                >
-                  Last 6 Months
-                </button>
-                <button
+          >
+            Last 6 Months
+          </button>
+          <button
                   className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filter === '1year' ? 'text-indigo-600 font-semibold' : ''}`}
                   onClick={() => { setFilter('1year'); setShowFilterDropdown(false); }}
-                >
-                  Last Year
-                </button>
-              </div>
+          >
+            Last Year
+          </button>
+        </div>
             )}
           </div>
           {/* Export Button */}
@@ -172,66 +172,69 @@ const TreatmentHistory = ({ patientId }) => {
               variant="primary"
               className="flex items-center ml-2"
               onClick={() => toast.info('Export functionality will be implemented in the next phase')}
-            >
+          >
               <FaFileExport className="mr-2" /> Export
             </Button>
           )}
         </div>
       </div>
       <div className="p-4">
-        {Object.keys(groupedTreatments).length > 0 ? (
-          <div className="space-y-6">
-            {Object.entries(groupedTreatments)
-              .sort(([dateA], [dateB]) => new Date(dateB) - new Date(dateA))
-              .map(([date, dayTreatments]) => (
-                <div key={date} className="border-b pb-4 last:border-b-0">
-                  <h3 className="text-md font-medium text-gray-700 mb-2">{date}</h3>
-                  <div className="space-y-3">
-                    {dayTreatments.map((treatment, index) => (
-                      <div key={index} className="bg-gray-50 p-3 rounded">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center">
-                              <span className="font-semibold">{treatment.procedure}</span>
-                              {treatment.procedureCode && (
-                                <span className="ml-2 text-xs bg-gray-200 px-2 py-0.5 rounded">
-                                  {treatment.procedureCode}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-500 mt-1">
-                              Tooth #{treatment.toothNumber} {treatment.quadrant ? `(${treatment.quadrant.replace('-', ' ')})` : ''}
-                            </div>
-                            {treatment.surfaces && treatment.surfaces.length > 0 && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                Surfaces: {treatment.surfaces.join(', ')}
-                              </div>
+      {Object.keys(groupedTreatments).length > 0 ? (
+        <div className="space-y-6">
+          {Object.entries(groupedTreatments)
+            .sort(([dateA], [dateB]) => new Date(dateB) - new Date(dateA))
+            .map(([date, dayTreatments]) => (
+              <div key={date} className="border-b pb-4 last:border-b-0">
+                <h3 className="text-md font-medium text-gray-700 mb-2">{date}</h3>
+                <div className="space-y-3">
+                  {dayTreatments.map((treatment, index) => (
+                    <div key={index} className="bg-gray-50 p-3 rounded">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center">
+                            <span className="font-semibold">{treatment.procedure}</span>
+                            {treatment.procedureCode && (
+                              <span className="ml-2 text-xs bg-gray-200 px-2 py-0.5 rounded">
+                                {treatment.procedureCode}
+                              </span>
                             )}
-                            {treatment.notes && (
-                              <div className="text-sm mt-2">{treatment.notes}</div>
-                            )}
+                            {treatment.billId || treatment.billed ? (
+                              <span className="ml-2 text-xs bg-green-200 text-green-800 px-2 py-0.5 rounded">Bill Generated</span>
+                            ) : null}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            {new Date(treatment.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          <div className="text-sm text-gray-500 mt-1">
+                            Tooth #{treatment.toothNumber} {treatment.quadrant ? `(${treatment.quadrant.replace('-', ' ')})` : ''}
                           </div>
+                          {treatment.surfaces && treatment.surfaces.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Surfaces: {treatment.surfaces.join(', ')}
+                            </div>
+                          )}
+                          {treatment.notes && (
+                            <div className="text-sm mt-2">{treatment.notes}</div>
+                          )}
                         </div>
-                        {treatment.performedBy && (
-                          <div className="text-xs text-gray-500 mt-2">
-                            Performed by: {treatment.performedBy.name || 'Unknown'}
-                          </div>
-                        )}
+                        <div className="text-sm text-gray-500">
+                          {new Date(treatment.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                      {treatment.performedBy && (
+                        <div className="text-xs text-gray-500 mt-2">
+                          Performed by: {treatment.performedBy.name || 'Unknown'}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-          </div>
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            {searchTerm || filter !== 'all' ? 'No treatments match your filters' : 'No treatment history available'}
-          </div>
-        )}
-      </div>
+              </div>
+            ))}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          {searchTerm || filter !== 'all' ? 'No treatments match your filters' : 'No treatment history available'}
+        </div>
+      )}
+        </div>
     </Card>
   );
 };

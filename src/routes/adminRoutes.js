@@ -4,6 +4,7 @@ import EditInventoryItem from '../pages/admin/EditInventoryItem';
 import ViewInventoryItem from '../pages/admin/ViewInventoryItem';
 import MedicineManagement from '../pages/admin/MedicineManagement.jsx';
 import FixedDentalEHR from '../pages/dental/FixedDentalEHR';
+import EnhancedDentalImaging from '../components/dental/EnhancedDentalImaging';
 
 const Dashboard = lazy(() => import('../pages/admin/Dashboard'));
 const ClinicSettingsPage = lazy(() => import('../pages/admin/ClinicSettingsPage'));
@@ -43,6 +44,10 @@ const DentalEHRClinicalNotes = () => <div>Dental EHR Clinical Notes (Coming Soon
 const DentalEHRAttachments = () => <div>Dental EHR Attachments (Coming Soon)</div>;
 const DentalEHRDiagnosis = () => <div>Dental EHR Diagnosis (Coming Soon)</div>;
 const DentalEHRChart = () => <div>Dental EHR Chart (Coming Soon)</div>;
+
+// Prescription routes
+const PrescriptionFormPage = lazy(() => import('../pages/prescriptions/PrescriptionFormPage'));
+const PrescriptionDetailPage = lazy(() => import('../pages/prescriptions/PrescriptionDetailPage'));
 
 const adminRoutes = {
   path: '/admin',
@@ -117,6 +122,18 @@ const adminRoutes = {
       path: 'prescriptions',
       element: PrescriptionManagement
     },
+    {
+      path: 'prescriptions/new',
+      element: PrescriptionFormPage
+    },
+    {
+      path: 'prescriptions/edit/:id',
+      element: PrescriptionFormPage
+    },
+    {
+      path: 'prescriptions/:id',
+      element: PrescriptionDetailPage
+    },
     // Dental Management
     {
       path: 'dental-management',
@@ -124,7 +141,7 @@ const adminRoutes = {
     },
     {
       path: 'dental-imaging',
-      element: DentalImaging
+      element: <EnhancedDentalImaging />
     },
     {
       path: 'dental-treatments',
@@ -141,27 +158,6 @@ const adminRoutes = {
     {
       path: 'dental/chairs',
       element: ChairManagementPage
-    },
-    // Dental EHR
-    {
-      path: 'dental-ehr',
-      element: DentalEHRDashboard
-    },
-    {
-      path: 'dental-ehr/clinical-notes',
-      element: <DentalEHRClinicalNotes />
-    },
-    {
-      path: 'dental-ehr/attachments',
-      element: <DentalEHRAttachments />
-    },
-    {
-      path: 'dental-ehr/diagnosis',
-      element: <DentalEHRDiagnosis />
-    },
-    {
-      path: 'dental-ehr/chart',
-      element: <DentalEHRChart />
     },
     // Inventory and Reports
     {

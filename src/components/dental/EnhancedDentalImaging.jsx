@@ -4,6 +4,8 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { FaUpload, FaDownload, FaTrash, FaSearch, FaPlus, FaCalendarAlt, FaImage, FaEye, FaEdit, FaTimes, FaChevronDown, FaFilter, FaSortAmountDown } from 'react-icons/fa';
 import dentalService from '../../api/dental/dentalService';
+import UploadDentalImageModal from './UploadDentalImageModal';
+import Modal from '../ui/Modal';
 
 const IMAGE_TYPES = [
   { value: 'panoramic', label: 'Panoramic X-Ray' },
@@ -49,16 +51,14 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
-  const [showUploadForm, setShowUploadForm] = useState(false);
-  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [editImage, setEditImage] = useState(null);
   const [filterType, setFilterType] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
-  const fileInputRef = useRef(null);
-  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
-  const [showSortDropdown, setShowSortDropdown] = useState(false);
   const typeDropdownRef = useRef(null);
   const sortDropdownRef = useRef(null);
+  const [showImageViewer, setShowImageViewer] = useState(false);
   
   // Fetch dental images
   useEffect(() => {
@@ -85,55 +85,45 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
   useEffect(() => {
     function handleClickOutside(event) {
       if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
-        setShowTypeDropdown(false);
+        // setShowTypeDropdown(false); // This state was removed
       }
       if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
-        setShowSortDropdown(false);
+        // setShowSortDropdown(false); // This state was removed
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleImageUpload = async (imageData) => {
+  useEffect(() => {
+    if (showUploadModal) {
+      console.log('UploadDentalImageModal should be open', { editImage });
+    }
+  }, [showUploadModal, editImage]);
+
+  // Replace handleImageUpload to use the shared modal's onSubmit
+  const handleImageUpload = async (formData) => {
     try {
       setLoading(true);
-      
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', imageData.file);
-      formData.append('type', imageData.type);
-      formData.append('description', imageData.description);
-      formData.append('notes', imageData.notes);
-      
-      // Upload image
       const result = await dentalService.uploadDentalImage(patientId, formData);
-      
-      // Update images list
       setImages(prev => [result, ...prev]);
-      
-      setShowUploadForm(false);
+      setShowUploadModal(false);
+      setEditImage(null);
       setLoading(false);
       toast.success('Image uploaded successfully');
     } catch (error) {
       console.error('Error uploading image:', error);
       toast.error('Failed to upload image');
-      
-      // For demo purposes, add a mock image
-      const mockImage = {
-        _id: `mock-${Date.now()}`,
-        type: imageData.type,
-        description: imageData.description,
-        date: new Date().toISOString(),
-        url: URL.createObjectURL(imageData.file),
-        thumbnailUrl: URL.createObjectURL(imageData.file),
-        notes: imageData.notes
-      };
-      
-      setImages(prev => [mockImage, ...prev]);
-      setShowUploadForm(false);
+      setShowUploadModal(false);
+      setEditImage(null);
       setLoading(false);
     }
+  };
+
+  // For editing, you may want a handleImageEdit function
+  const handleImageEdit = (image) => {
+    setEditImage(image);
+    setShowUploadModal(true);
   };
 
   const handleDeleteImage = async (imageId) => {
@@ -144,9 +134,9 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
       await dentalService.deleteDentalImage(imageId);
       
       // Update images list
-      setImages(prev => prev.filter(img => img._id !== imageId));
+      setImages(prev => prev.filter(img => (img._id || img.id) !== imageId));
       
-      if (selectedImage && selectedImage._id === imageId) {
+      if (selectedImage && (selectedImage._id || selectedImage.id) === imageId) {
         setSelectedImage(null);
       }
       
@@ -157,7 +147,7 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
       toast.error('Failed to delete image');
       
       // For demo purposes, remove from state anyway
-      setImages(prev => prev.filter(img => img._id !== imageId));
+      setImages(prev => prev.filter(img => (img._id || img.id) !== imageId));
       setLoading(false);
     }
   };
@@ -272,14 +262,14 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
               size="sm"
               variant="secondary"
               className="flex items-center min-w-[140px] justify-between"
-              onClick={() => setShowTypeDropdown((v) => !v)}
+              // onClick={() => setShowTypeDropdown((v) => !v)} // This state was removed
               type="button"
             >
               <FaFilter className="mr-2" />
               {filterType === 'all' ? 'All Types' : (IMAGE_TYPES.find(t => t.value === filterType)?.label || filterType)}
               <FaChevronDown className="ml-2" />
             </Button>
-            {showTypeDropdown && (
+            {/* {showTypeDropdown && ( // This state was removed
               <div className="absolute z-10 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg">
                 <button
                   className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${filterType === 'all' ? 'text-indigo-600 font-semibold' : ''}`}
@@ -297,7 +287,7 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
                   </button>
                 ))}
               </div>
-            )}
+            )} */}
           </div>
           {/* Sort Dropdown */}
           <div className="relative ml-2" ref={sortDropdownRef}>
@@ -305,14 +295,14 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
               size="sm"
               variant="secondary"
               className="flex items-center min-w-[120px] justify-between"
-              onClick={() => setShowSortDropdown((v) => !v)}
+              // onClick={() => setShowSortDropdown((v) => !v)} // This state was removed
               type="button"
             >
               <FaSortAmountDown className="mr-2" />
               {sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}
               <FaChevronDown className="ml-2" />
             </Button>
-            {showSortDropdown && (
+            {/* {showSortDropdown && ( // This state was removed
               <div className="absolute z-10 mt-2 w-40 bg-white border border-gray-200 rounded shadow-lg">
                 <button
                   className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 ${sortOrder === 'newest' ? 'text-indigo-600 font-semibold' : ''}`}
@@ -327,7 +317,7 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
                   Oldest First
                 </button>
               </div>
-            )}
+            )} */}
           </div>
           {/* Upload Button */}
           {!readOnly && (
@@ -335,7 +325,7 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
               size="sm"
               variant="primary"
               className="flex items-center ml-2"
-              onClick={() => setShowUploadForm(true)}
+              onClick={() => { setEditImage(null); setShowUploadModal(true); }}
             >
               <FaUpload className="mr-2" /> Upload Image
             </Button>
@@ -347,7 +337,7 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
         {sortedImages.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedImages.map((img) => (
-              <div key={img._id} className="bg-gray-50 p-4 rounded shadow-sm flex flex-col">
+              <div key={img._id || img.id} className="bg-gray-50 p-4 rounded shadow-sm flex flex-col">
                 <div className="flex items-center mb-2">
                   <img src={img.thumbnailUrl || img.url} alt={img.description} className="w-20 h-20 object-cover rounded mr-4 border" />
                   <div className="flex-1">
@@ -361,8 +351,8 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
                   <Button size="sm" variant="secondary" onClick={() => handleViewImage(img)}><FaEye className="mr-1" /> View</Button>
                   {!readOnly && (
                     <>
-                      <Button size="sm" variant="secondary" onClick={() => setSelectedImage(img) || setShowUploadForm(true)}><FaEdit className="mr-1" /> Edit</Button>
-                      <Button size="sm" variant="danger" onClick={() => handleDeleteImage(img._id)}><FaTrash className="mr-1" /> Delete</Button>
+                      <Button size="sm" variant="secondary" onClick={() => handleImageEdit(img)}><FaEdit className="mr-1" /> Edit</Button>
+                      <Button size="sm" variant="danger" onClick={() => handleDeleteImage(img._id || img.id)}><FaTrash className="mr-1" /> Delete</Button>
                     </>
                   )}
                   <a href={img.url} target="_blank" rel="noopener noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded flex items-center"><FaDownload className="mr-1" /> Download</a>
@@ -374,228 +364,278 @@ const EnhancedDentalImaging = ({ patientId, readOnly = false }) => {
           <div className="text-center py-8 text-gray-500">No dental images found</div>
         )}
       </div>
-      {/* Upload Form and Image Viewer logic remains unchanged */}
-      {showUploadForm && (
-        <UploadForm 
-          onUpload={handleImageUpload}
-          onCancel={() => setShowUploadForm(false)}
-          existingImage={selectedImage}
-          onUpdate={(updatedData) => {
-            if (selectedImage) {
-              handleUpdateImage(selectedImage._id, updatedData);
-              setSelectedImage(null);
-              setShowUploadForm(false);
-            }
-          }}
+      {/* Add shared modal */}
+      {showUploadModal && (
+        <UploadDentalImageModal
+          isOpen={showUploadModal}
+          onClose={() => { setShowUploadModal(false); setEditImage(null); }}
+          onSubmit={handleImageUpload}
+          loading={loading}
+          patientId={patientId}
+          initialData={editImage}
         />
       )}
       
-      {/* Image Viewer */}
-      {showImageViewer && selectedImage && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold">{selectedImage.description}</h3>
-              <button 
-                onClick={() => setShowImageViewer(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <FaTimes />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-100">
-              <img 
-                src={selectedImage.url} 
-                alt={selectedImage.description}
-                className="max-w-full max-h-[70vh] object-contain"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src = 'https://via.placeholder.com/800x600?text=Image+Not+Available';
-                }}
-              />
-            </div>
-            
-            <div className="p-4 border-t">
-              <div className="mb-2">
-                <span className="font-medium">Type:</span> {getImageTypeLabel(selectedImage.type)}
+      {/* Image Viewer Modal */}
+      {showImageViewer && selectedImage && (() => {
+        // Normalize toothNumbers
+        let toothNumbers = selectedImage.toothNumbers;
+        if (typeof toothNumbers === 'string') {
+          try {
+            toothNumbers = JSON.parse(toothNumbers);
+          } catch {
+            toothNumbers = [];
+          }
+        }
+        if (!Array.isArray(toothNumbers)) toothNumbers = [];
+        // DEMO REMOVED: Do not inject fake teeth numbers
+
+        // Normalize date
+        const dateRaw = selectedImage.date || selectedImage.createdAt || selectedImage.updatedAt;
+        const dateObj = dateRaw ? new Date(dateRaw) : null;
+        const isValidDate = dateObj && !isNaN(dateObj.getTime());
+        const dateString = isValidDate ? dateObj.toLocaleDateString() : '';
+
+        return (
+          <Modal isOpen={showImageViewer} onClose={() => setShowImageViewer(false)} title="Dental Image Details" size="md">
+            <div className="space-y-6">
+              {/* Image Preview with Zoom Button */}
+              <div className="flex justify-center relative">
+                <img
+                  src={selectedImage.url}
+                  alt={selectedImage.description}
+                  className="max-h-60 rounded border"
+                  onError={e => {
+                    e.target.onerror = null;
+                    e.target.src = 'https://via.placeholder.com/800x600?text=Image+Not+Available';
+                  }}
+                />
+                <a
+                  href={selectedImage.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute top-2 right-2 bg-white bg-opacity-80 rounded-full p-2 shadow hover:bg-blue-100"
+                  title="Zoom/View Full Size"
+                >
+                  <FaEye className="text-xl text-blue-600" />
+                </a>
               </div>
-              <div className="mb-2">
-                <span className="font-medium">Date:</span> {new Date(selectedImage.date).toLocaleDateString()}
+              {/* Image Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image Type</label>
+                <div className="border px-3 py-2 rounded bg-gray-50">{getImageTypeLabel(selectedImage.type)}</div>
               </div>
-              {selectedImage.notes && (
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <div className="border px-3 py-2 rounded bg-gray-50">{selectedImage.description}</div>
+              </div>
+              {/* Teeth Involved */}
+              {toothNumbers.length > 0 && (
                 <div>
-                  <span className="font-medium">Notes:</span> {selectedImage.notes}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Teeth Involved</label>
+                  <div className="flex flex-wrap gap-1">
+                    {toothNumbers.map((tooth, idx) => (
+                      <span key={`${tooth}-${idx}`} className="bg-gray-200 px-2 py-1 rounded text-xs">Tooth #{tooth}</span>
+                    ))}
+                  </div>
                 </div>
               )}
-              
+              {/* Notes */}
+              {selectedImage.notes && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Clinical Notes</label>
+                  <div className="border px-3 py-2 rounded bg-gray-50">{selectedImage.notes}</div>
+                </div>
+              )}
+              {/* Date */}
+              {dateString && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                  <div className="border px-3 py-2 rounded bg-gray-50">{dateString}</div>
+                </div>
+              )}
+              {/* Download & Edit Buttons */}
               <div className="flex justify-end mt-4 space-x-2">
-                <a 
-                  href={selectedImage.url} 
-                  download={`dental-image-${selectedImage._id}.jpg`}
+                <a
+                  href={selectedImage.url}
+                  download={`dental-image-${selectedImage._id || selectedImage.id}.jpg`}
                   className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <FaDownload className="mr-2" /> Download
                 </a>
+                {!readOnly && (
+                  <button
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded flex items-center"
+                    onClick={() => {
+                      setShowImageViewer(false);
+                      setEditImage(selectedImage);
+                      setShowUploadModal(true);
+                    }}
+                  >
+                    <FaEdit className="mr-2" /> Edit
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </Modal>
+        );
+      })()}
     </Card>
   );
 };
 
 // Upload Form Component
-const UploadForm = ({ onUpload, onCancel, existingImage, onUpdate }) => {
-  const [file, setFile] = useState(null);
-  const [type, setType] = useState(existingImage ? existingImage.type : 'panoramic');
-  const [description, setDescription] = useState(existingImage ? existingImage.description : '');
-  const [notes, setNotes] = useState(existingImage ? existingImage.notes : '');
-  const [previewUrl, setPreviewUrl] = useState(existingImage ? existingImage.url : null);
-  const fileInputRef = useRef(null);
+// This component is now replaced by UploadDentalImageModal
+// const UploadForm = ({ onUpload, onCancel, existingImage, onUpdate }) => {
+//   const [file, setFile] = useState(null);
+//   const [type, setType] = useState(existingImage ? existingImage.type : 'panoramic');
+//   const [description, setDescription] = useState(existingImage ? existingImage.description : '');
+//   const [notes, setNotes] = useState(existingImage ? existingImage.notes : '');
+//   const [previewUrl, setPreviewUrl] = useState(existingImage ? existingImage.url : null);
+//   const fileInputRef = useRef(null);
   
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      setPreviewUrl(URL.createObjectURL(selectedFile));
-    }
-  };
+//   const handleFileChange = (e) => {
+//     const selectedFile = e.target.files[0];
+//     if (selectedFile) {
+//       setFile(selectedFile);
+//       setPreviewUrl(URL.createObjectURL(selectedFile));
+//     }
+//   };
   
-  const handleSubmit = (e) => {
-    e.preventDefault();
+//   const handleSubmit = (e) => {
+//     e.preventDefault();
     
-    if (existingImage && onUpdate) {
-      onUpdate({
-        type,
-        description,
-        notes
-      });
-    } else {
-      if (!file) {
-        toast.error('Please select a file to upload');
-        return;
-      }
+//     if (existingImage && onUpdate) {
+//       onUpdate({
+//         type,
+//         description,
+//         notes
+//       });
+//     } else {
+//       if (!file) {
+//         toast.error('Please select a file to upload');
+//         return;
+//       }
       
-      onUpload({
-        file,
-        type,
-        description,
-        notes
-      });
-    }
-  };
+//       onUpload({
+//         file,
+//         type,
+//         description,
+//         notes
+//       });
+//     }
+//   };
   
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
-        <div className="p-4 border-b flex justify-between items-center">
-          <h3 className="text-lg font-semibold">
-            {existingImage ? 'Edit Image Details' : 'Upload Dental Image'}
-          </h3>
-          <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">
-            <FaTimes />
-          </button>
-        </div>
+//   return (
+//     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+//       <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
+//         <div className="p-4 border-b flex justify-between items-center">
+//           <h3 className="text-lg font-semibold">
+//             {existingImage ? 'Edit Image Details' : 'Upload Dental Image'}
+//           </h3>
+//           <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">
+//             <FaTimes />
+//           </button>
+//         </div>
         
-        <form onSubmit={handleSubmit} className="p-4">
-          {!existingImage && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Image File</label>
-              <div 
-                className="border-dashed border-2 border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50"
-                onClick={() => fileInputRef.current.click()}
-              >
-                {previewUrl ? (
-                  <div className="mb-2">
-                    <img 
-                      src={previewUrl} 
-                      alt="Preview" 
-                      className="max-h-40 mx-auto"
-                    />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 mb-2">
-                    <FaUpload className="text-3xl mx-auto mb-2" />
-                    <p>Click to select an image or drag and drop</p>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                />
-                <button
-                  type="button"
-                  className="mt-2 px-4 py-2 bg-gray-200 rounded text-sm hover:bg-gray-300"
-                >
-                  Browse Files
-                </button>
-              </div>
-            </div>
-          )}
+//         <form onSubmit={handleSubmit} className="p-4">
+//           {!existingImage && (
+//             <div className="mb-4">
+//               <label className="block text-sm font-medium text-gray-700 mb-1">Image File</label>
+//               <div 
+//                 className="border-dashed border-2 border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50"
+//                 onClick={() => fileInputRef.current.click()}
+//               >
+//                 {previewUrl ? (
+//                   <div className="mb-2">
+//                     <img 
+//                       src={previewUrl} 
+//                       alt="Preview" 
+//                       className="max-h-40 mx-auto"
+//                     />
+//                   </div>
+//                 ) : (
+//                   <div className="text-gray-500 mb-2">
+//                     <FaUpload className="text-3xl mx-auto mb-2" />
+//                     <p>Click to select an image or drag and drop</p>
+//                   </div>
+//                 )}
+//                 <input
+//                   type="file"
+//                   ref={fileInputRef}
+//                   className="hidden"
+//                   accept="image/*"
+//                   onChange={handleFileChange}
+//                 />
+//                 <button
+//                   type="button"
+//                   className="mt-2 px-4 py-2 bg-gray-200 rounded text-sm hover:bg-gray-300"
+//                 >
+//                   Browse Files
+//                 </button>
+//               </div>
+//             </div>
+//           )}
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Image Type</label>
-            <select
-              className="w-full border rounded p-2"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              required
-            >
-              {IMAGE_TYPES.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
-          </div>
+//           <div className="mb-4">
+//             <label className="block text-sm font-medium text-gray-700 mb-1">Image Type</label>
+//             <select
+//               className="w-full border rounded p-2"
+//               value={type}
+//               onChange={(e) => setType(e.target.value)}
+//               required
+//             >
+//               {IMAGE_TYPES.map(type => (
+//                 <option key={type.value} value={type.value}>{type.label}</option>
+//               ))}
+//             </select>
+//           </div>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <input
-              type="text"
-              className="w-full border rounded p-2"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-              placeholder="Brief description of the image"
-            />
-          </div>
+//           <div className="mb-4">
+//             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+//             <input
+//               type="text"
+//               className="w-full border rounded p-2"
+//               value={description}
+//               onChange={(e) => setDescription(e.target.value)}
+//               required
+//               placeholder="Brief description of the image"
+//             />
+//           </div>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea
-              className="w-full border rounded p-2"
-              rows="3"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Additional notes about this image"
-            ></textarea>
-          </div>
+//           <div className="mb-4">
+//             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+//             <textarea
+//               className="w-full border rounded p-2"
+//               rows="3"
+//               value={notes}
+//               onChange={(e) => setNotes(e.target.value)}
+//               placeholder="Additional notes about this image"
+//             ></textarea>
+//           </div>
           
-          <div className="flex justify-end space-x-2">
-            <button
-              type="button"
-              className="px-4 py-2 border rounded text-gray-700 hover:bg-gray-50"
-              onClick={onCancel}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              {existingImage ? 'Update' : 'Upload'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
+//           <div className="flex justify-end space-x-2">
+//             <button
+//               type="button"
+//               className="px-4 py-2 border rounded text-gray-700 hover:bg-gray-50"
+//               onClick={onCancel}
+//             >
+//               Cancel
+//             </button>
+//             <button
+//               type="submit"
+//               className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+//             >
+//               {existingImage ? 'Update' : 'Upload'}
+//             </button>
+//           </div>
+//         </form>
+//       </div>
+//     </div>
+//   );
+// };
 
 export default EnhancedDentalImaging;

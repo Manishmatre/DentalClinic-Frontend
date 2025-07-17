@@ -71,6 +71,16 @@ const TOOTH_SURFACES = [
   { value: 'lingual', label: 'Lingual (L)', position: 'bottom' }
 ];
 
+// 1. Add status options
+const TOOTH_STATUS_OPTIONS = [
+  { value: 'planned', label: 'Planned' },
+  { value: 'in-progress', label: 'In Progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'discontinued', label: 'Discontinued' },
+  { value: 'on-hold', label: 'On Hold' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   // State for chart data
   const [chartData, setChartData] = useState(null);
@@ -80,7 +90,6 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   // State for tooth selection and editing
   const [selectedTooth, setSelectedTooth] = useState(null);
   const [selectedCondition, setSelectedCondition] = useState('healthy');
-  const [selectedSurfaces, setSelectedSurfaces] = useState([]);
   const [notes, setNotes] = useState('');
   const [cost, setCost] = useState('');
   const [discountPercent, setDiscountPercent] = useState('');
@@ -93,7 +102,8 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   const [procedure, setProcedure] = useState('');
   const [treatmentDate, setTreatmentDate] = useState(new Date().toISOString().split('T')[0]);
   const [treatmentNotes, setTreatmentNotes] = useState('');
-  const [status, setStatus] = useState('completed'); // 'planned' or 'completed'
+  // 2. Add status state
+  const [selectedStatus, setSelectedStatus] = useState('completed');
   
   // State for UI controls
   const [dentitionType, setDentitionType] = useState('adult'); // 'adult' or 'pediatric'
@@ -144,6 +154,9 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   // Track which discount field was last changed
   const [lastDiscountInput, setLastDiscountInput] = useState(''); // 'percent' or 'amount'
 
+  // Add state for discount method
+  const [discountMethod, setDiscountMethod] = useState('percent'); // 'percent' or 'amount'
+
   // Fetch dental chart data
   useEffect(() => {
     fetchDentalChart();
@@ -154,11 +167,17 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
     let baseCost = parseFloat(cost) || 0;
     let percent = parseFloat(discountPercent) || 0;
     let amount = parseFloat(discountAmount) || 0;
-    let percentDiscount = baseCost * (percent / 100);
-    let totalDiscount = percentDiscount + amount;
-    let final = Math.max(0, baseCost - totalDiscount);
+    let discount = 0;
+    if (discountMethod === 'percent') {
+      discount = baseCost * (percent / 100);
+      setDiscountAmount(discount.toFixed(2));
+    } else {
+      discount = amount;
+      setDiscountPercent(baseCost > 0 ? ((amount / baseCost) * 100).toFixed(2) : '0');
+    }
+    let final = Math.max(0, baseCost - discount);
     setFinalCost(final.toFixed(2));
-  }, [cost, discountPercent, discountAmount]);
+  }, [cost, discountPercent, discountAmount, discountMethod]);
 
   // Sync discountAmount when discountPercent changes (if last changed was percent)
   useEffect(() => {
@@ -182,48 +201,120 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
     }
   }, [discountAmount, cost]);
 
+  // Replace all treatment CRUD logic with DentalTreatment API
+  // Fetch treatments for patient
+  const fetchTreatments = async () => {
+    setLoading(true);
+    try {
+      const treatmentData = await dentalService.getPatientDentalTreatments(patientId);
+      console.log('Fetched treatments:', treatmentData);
+      setTreatmentHistory(Array.isArray(treatmentData) ? treatmentData : []);
+    } catch (error) {
+      console.error('Error fetching treatments:', error, error?.response);
+      // Only show error toast if truly an exception, not just empty data
+      if (error && error.response === undefined) {
+        toast.error('Failed to load treatments');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch on mount and when switching to management/plan tab
+  useEffect(() => {
+    if (treatmentTab === 'management' || treatmentTab === 'plan') {
+      fetchTreatments();
+    }
+  }, [treatmentTab, patientId]);
+
+  // Add new treatment (plan or completed)
+  const handleAddTreatment = async () => {
+    if (!procedure || !treatmentDate) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    try {
+      const treatmentData = {
+        clinicId: chartData.clinicId,
+        patientId: chartData.patientId,
+        chartId: chartData._id,
+        toothNumber: selectedTooth,
+        procedure,
+        doctor: selectedDoctor,
+        date: treatmentDate,
+        cost: parseFloat(cost) || 0,
+        discountPercent: parseFloat(discountPercent) || 0,
+        discountAmount: parseFloat(discountAmount) || 0,
+        finalCost: parseFloat(finalCost) || 0,
+        status: selectedStatus,
+        notes: treatmentNotes,
+        treatmentType: selectedTreatmentType,
+        patientApprovalStatus: 'pending',
+      };
+      await dentalService.createTreatment(treatmentData);
+      toast.success('Treatment added successfully');
+      setShowTreatmentModal(false);
+      setProcedure('');
+      setTreatmentDate(new Date().toISOString().split('T')[0]);
+      setTreatmentNotes('');
+      setCost('');
+      setDiscountPercent('');
+      setDiscountAmount('');
+      setFinalCost('');
+      setSelectedStatus('completed');
+      // Refresh treatments
+      fetchTreatments();
+    } catch (error) {
+      console.error('Error adding treatment:', error);
+      toast.error('Failed to add treatment');
+    }
+  };
+
+  // Delete treatment
+  const handleDeleteTreatment = async (id) => {
+    try {
+      await dentalService.deleteTreatment(id);
+      toast.success('Treatment deleted');
+      fetchTreatments();
+    } catch (error) {
+      console.error('Error deleting treatment:', error);
+      toast.error('Failed to delete treatment');
+    }
+  };
+
   // Fetch dental chart data function
   const fetchDentalChart = async () => {
     try {
       setLoading(true);
-      
       // Try to get data from API
       try {
-        const data = await dentalService.getPatientDentalChart(patientId);
-        setChartData(data);
-        
+        const { chart, teeth } = await dentalService.getPatientDentalChart(patientId);
+        setChartData(chart);
         // Initialize teeth data
         const teethObj = {};
-        // Initialize all adult teeth with default values
         for (let i = 1; i <= 32; i++) {
-          teethObj[i] = data.teeth && data.teeth[i] 
-            ? data.teeth[i] 
-            : { condition: 'healthy', surfaces: [], notes: '' };
+          teethObj[i] = teeth && teeth[i]
+            ? teeth[i]
+            : { condition: 'healthy', surfaces: [], notes: '', status: 'completed' };
         }
-        
         setTeethData(teethObj);
-        
         // Also fetch treatment history
         const treatmentData = await dentalService.getPatientTreatments(patientId);
         setTreatmentHistory(treatmentData || []);
       } catch (apiError) {
         console.log('API not available, using mock data');
-        
         // Initialize with mock data for demo
         const teethObj = {};
         for (let i = 1; i <= 32; i++) {
-          teethObj[i] = { condition: 'healthy', surfaces: [], notes: '' };
+          teethObj[i] = { condition: 'healthy', surfaces: [], notes: '', status: 'completed' };
         }
-        
         // Add some demo data
         teethObj[3] = { condition: 'filled', surfaces: ['occlusal'], notes: 'Composite filling' };
         teethObj[14] = { condition: 'crown', surfaces: [], notes: 'Full ceramic crown' };
         teethObj[19] = { condition: 'caries', surfaces: ['mesial', 'occlusal'], notes: 'Needs treatment' };
         teethObj[30] = { condition: 'root-canal', surfaces: [], notes: 'Root canal treatment completed 2024-04-15' };
-        
         setTeethData(teethObj);
         setChartData({ _id: 'mock-chart-id', patientId });
-        
         // Mock treatment history
         setTreatmentHistory([
           { 
@@ -249,7 +340,6 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
           }
         ]);
       }
-      
       setLoading(false);
     } catch (error) {
       console.error('Error fetching dental chart:', error);
@@ -305,15 +395,15 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
     const toothData = teethData[toothNumber];
     if (toothData) {
       setSelectedCondition(toothData.condition || 'healthy');
-      setSelectedSurfaces(toothData.surfaces || []);
       setNotes(toothData.notes || '');
       setCost(toothData.cost || '');
       setDiscountPercent(toothData.discountPercent || '');
       setDiscountAmount(toothData.discountAmount || '');
       setFinalCost(toothData.finalCost || '');
+      // 3. In handleToothClick, set status from toothData
+      setSelectedStatus(toothData.status || 'completed');
     } else {
       setSelectedCondition('healthy');
-      setSelectedSurfaces([]);
       setNotes('');
       setCost('');
       setDiscountPercent('');
@@ -322,93 +412,106 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
     }
   };
 
-  // Toggle surface selection
-  const handleSurfaceToggle = (surface) => {
-    if (!readOnly) {
-      setSelectedSurfaces(prev => 
-        prev.includes(surface) 
-          ? prev.filter(s => s !== surface) 
-          : [...prev, surface]
-      );
+  // Utility to check for valid MongoDB ObjectId
+  const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(id);
+
+  // Helper to determine quadrant for a tooth number
+  const getQuadrant = (toothNumber) => {
+    // Universal numbering (adult):
+    if (dentitionType === 'adult') {
+      if (toothNumber >= 1 && toothNumber <= 8) return 'upper-right';
+      if (toothNumber >= 9 && toothNumber <= 16) return 'upper-left';
+      if (toothNumber >= 17 && toothNumber <= 24) return 'lower-left';
+      if (toothNumber >= 25 && toothNumber <= 32) return 'lower-right';
+    } else {
+      // Pediatric/primary teeth
+      if (PRIMARY_TEETH['upper-right'].includes(toothNumber)) return 'upper-right';
+      if (PRIMARY_TEETH['upper-left'].includes(toothNumber)) return 'upper-left';
+      if (PRIMARY_TEETH['lower-left'].includes(toothNumber)) return 'lower-left';
+      if (PRIMARY_TEETH['lower-right'].includes(toothNumber)) return 'lower-right';
     }
+    return 'upper-right'; // fallback
   };
 
-  // Handle condition change
+  // Handle condition change (examination only)
   const handleConditionChange = async (condition) => {
     if (!readOnly && selectedTooth) {
-      if (!chartData || !chartData._id) {
-        toast.error('Dental chart not loaded. Please wait and try again.');
-        return;
-      }
+      // Helper to update condition after chart is loaded
+      const updateCondition = async (chartId) => {
+        try {
+          await dentalService.updateToothRecord(
+            chartId,
+            selectedTooth,
+            {
+              doctor: selectedDoctor,
+              condition: condition,
+              notes: notes,
+              cost: parseFloat(cost) || 0,
+              discountPercent: parseFloat(discountPercent) || 0,
+              discountAmount: parseFloat(discountAmount) || 0,
+              finalCost: parseFloat(finalCost) || 0,
+              quadrant: getQuadrant(selectedTooth),
+            }
+          );
+          // If a treatment type is selected, update or create a DentalTreatment plan for this tooth
+          if (selectedTreatmentType) {
+            const existingTreatment = treatmentHistory.find(
+              t => t.toothNumber === selectedTooth &&
+                t.procedure === selectedTreatmentType &&
+                t.status !== 'completed' && t.status !== 'cancelled'
+            );
+            const treatmentPayload = {
+              chartId: chartData._id,
+              patientId,
+              toothNumber: selectedTooth,
+              procedure: selectedTreatmentType,
+              doctor: selectedDoctor,
+              cost: parseFloat(cost) || 0,
+              discountPercent: parseFloat(discountPercent) || 0,
+              discountAmount: parseFloat(discountAmount) || 0,
+              finalCost: parseFloat(finalCost) || 0,
+              status: selectedStatus,
+              notes,
+              treatmentType: selectedTreatmentType,
+              patientApprovalStatus: (existingTreatment && existingTreatment.patientApprovalStatus) || 'pending',
+            };
+            if (existingTreatment && existingTreatment._id) {
+              await dentalService.updateTreatment(existingTreatment._id, treatmentPayload);
+            } else {
+              await dentalService.createTreatment(treatmentPayload);
+            }
+          }
       setSelectedCondition(condition);
-      try {
-        await dentalService.updateToothRecord(
-          chartData._id,
-          selectedTooth,
-          {
-            doctor: selectedDoctor,
-            condition: condition,
-            surfaces: selectedSurfaces,
-            treatmentType: selectedTreatmentType,
-            notes: notes,
-            cost: parseFloat(cost) || 0,
-            discountPercent: parseFloat(discountPercent) || 0,
-            discountAmount: parseFloat(discountAmount) || 0,
-            finalCost: parseFloat(finalCost) || 0
+          setTeethData(prev => ({
+            ...prev,
+            [selectedTooth]: {
+              ...prev[selectedTooth],
+              condition: condition
+            }
+          }));
+          toast.success(`Condition updated for Tooth #${selectedTooth}`);
+        } catch (error) {
+          console.error('Error updating condition:', error);
+          toast.error('Failed to update condition');
+        }
+      };
+      // If chartData._id is missing or invalid, try to fetch/create chart
+      if (!chartData || !chartData._id || !isValidObjectId(chartData._id)) {
+        try {
+          const { chart } = await dentalService.getPatientDentalChart(patientId);
+          if (chart && isValidObjectId(chart._id)) {
+            setChartData(chart);
+            await updateCondition(chart._id);
+          } else {
+            toast.error('Dental chart not loaded. Please wait and try again.');
           }
-        );
-        setTeethData(prev => ({
-          ...prev,
-          [selectedTooth]: {
-            ...prev[selectedTooth],
-            condition: condition
-          }
-        }));
-        toast.success(`Condition updated for Tooth #${selectedTooth}`);
-      } catch (error) {
-        console.error('Error updating condition:', error);
-        toast.error('Failed to update condition');
-      }
-    }
-  };
-
-  // Handle affected surfaces change (instant save)
-  const handleSurfacesChange = async (option) => {
-    if (!readOnly && selectedTooth) {
-      if (!chartData || !chartData._id) {
-        toast.error('Dental chart not loaded. Please wait and try again.');
+        } catch (err) {
+          toast.error('Failed to load or create dental chart.');
+        }
         return;
       }
-      const newSurfaces = option ? [option.value] : [];
-      setSelectedSurfaces(newSurfaces);
-      try {
-        await dentalService.updateToothRecord(
-          chartData._id,
-          selectedTooth,
-          {
-            doctor: selectedDoctor,
-            condition: selectedCondition,
-            surfaces: newSurfaces,
-            treatmentType: selectedTreatmentType,
-            notes: notes,
-            cost: parseFloat(cost) || 0,
-            discountPercent: parseFloat(discountPercent) || 0,
-            discountAmount: parseFloat(discountAmount) || 0,
-            finalCost: parseFloat(finalCost) || 0
-          }
-        );
-        setTeethData(prev => ({
-          ...prev,
-          [selectedTooth]: {
-            ...prev[selectedTooth],
-            surfaces: newSurfaces
-          }
-        }));
-        toast.success(`Affected surfaces updated for Tooth #${selectedTooth}`);
-      } catch (error) {
-        console.error('Error updating surfaces:', error);
-        toast.error('Failed to update affected surfaces');
-      }
+      // Otherwise, update condition as normal
+      await updateCondition(chartData._id);
     }
   };
 
@@ -431,73 +534,76 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
       let baseCost = parseFloat(cost) || 0;
       let percent = parseFloat(discountPercent) || 0;
       let amount = parseFloat(discountAmount) || 0;
-      let percentDiscount = baseCost * (percent / 100);
-      let totalDiscount = percentDiscount + amount;
-      let final = Math.max(0, baseCost - totalDiscount);
-      await dentalService.updateToothRecord(
-        chartData._id,
-        selectedTooth,
-        {
+      let discount = 0;
+      if (discountMethod === 'percent') {
+        discount = baseCost * (percent / 100);
+      } else {
+        discount = amount;
+      }
+      let final = Math.max(0, baseCost - discount);
+        await dentalService.updateToothRecord(
+          chartData._id,
+          selectedTooth,
+          {
           doctor: selectedDoctor,
-          condition: selectedCondition,
-          surfaces: selectedSurfaces,
+            condition: selectedCondition,
           treatmentType: selectedTreatmentType,
           notes: notes,
           cost: baseCost,
           discountPercent: percent,
           discountAmount: amount,
-          finalCost: final
+          finalCost: final,
+          status: selectedStatus,
+          quadrant: getQuadrant(selectedTooth),
+          }
+        );
+      // If a treatment type is selected, update or create a DentalTreatment plan for this tooth
+      if (selectedTreatmentType) {
+        const existingTreatment = treatmentHistory.find(
+          t => t.toothNumber === selectedTooth &&
+            t.procedure === selectedTreatmentType &&
+            t.status !== 'completed' && t.status !== 'cancelled'
+        );
+        const treatmentPayload = {
+          chartId: chartData._id,
+          patientId,
+          toothNumber: selectedTooth,
+          procedure: selectedTreatmentType,
+          doctor: selectedDoctor,
+          cost: baseCost,
+          discountPercent: percent,
+          discountAmount: amount,
+          finalCost: final,
+          status: selectedStatus,
+          notes,
+          treatmentType: selectedTreatmentType,
+          patientApprovalStatus: (existingTreatment && existingTreatment.patientApprovalStatus) || 'pending',
+        };
+        if (existingTreatment && existingTreatment._id) {
+          await dentalService.updateTreatment(existingTreatment._id, treatmentPayload);
+        } else {
+          await dentalService.createTreatment(treatmentPayload);
         }
-      );
+      }
+      setTeethData(prev => ({
+        ...prev,
+        [selectedTooth]: {
+          ...prev[selectedTooth],
+          doctor: selectedDoctor,
+          condition: selectedCondition,
+          treatmentType: selectedTreatmentType,
+          notes: notes,
+          cost: baseCost,
+          discountPercent: percent,
+          discountAmount: amount,
+          finalCost: final,
+          status: selectedStatus
+        }
+      }));
       toast.success(`Tooth #${selectedTooth} updated successfully`);
     } catch (error) {
       console.error('Error saving tooth data:', error);
       toast.error('Failed to save tooth data');
-    }
-  };
-
-  // Handle adding a treatment
-  const handleAddTreatment = async () => {
-    if (!procedure || !treatmentDate) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-    
-    try {
-      const treatmentData = {
-        toothNumber: selectedTooth,
-        procedure,
-        date: treatmentDate,
-        notes: treatmentNotes,
-        cost: parseFloat(cost) || 0,
-        status
-      };
-      
-      // Add to local state
-      setTreatmentHistory(prev => [...prev, {
-        _id: `local-${Date.now()}`,
-        ...treatmentData
-      }]);
-      
-      // Try to save to API
-      try {
-        await dentalService.addTreatment(chartData._id, selectedTooth, treatmentData);
-        toast.success('Treatment added successfully');
-      } catch (apiError) {
-        console.log('API not available, treatment saved locally only');
-        toast.info('Treatment saved locally (demo mode)');
-      }
-      
-      // Close modal and reset form
-      setShowTreatmentModal(false);
-      setProcedure('');
-      setTreatmentDate(new Date().toISOString().split('T')[0]);
-      setTreatmentNotes('');
-      setCost('');
-      setStatus('completed');
-    } catch (error) {
-      console.error('Error adding treatment:', error);
-      toast.error('Failed to add treatment');
     }
   };
 
@@ -570,20 +676,20 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
                   const offset = getArchOffset(i, 16);
                   return (
                     <div key={toothNumber} className="tooth-container" style={{ transform: `translateY(${offset}px)` }}>
-                      <ToothSvg 
-                        toothNumber={convertToothNumber(toothNumber)}
-                        toothType={getToothType(toothNumber)}
-                        condition={teethData[toothNumber]?.condition || 'healthy'}
-                        surfaces={teethData[toothNumber]?.surfaces || []}
-                        selected={selectedTooth === toothNumber}
-                        onClick={() => handleToothClick(toothNumber)}
-                      />
-                    </div>
+                    <ToothSvg 
+                      toothNumber={convertToothNumber(toothNumber)}
+                      toothType={getToothType(toothNumber)}
+                      condition={teethData[toothNumber]?.condition || 'healthy'}
+                      surfaces={teethData[toothNumber]?.surfaces || []}
+                      selected={selectedTooth === toothNumber}
+                      onClick={() => handleToothClick(toothNumber)}
+                    />
+                  </div>
                   );
                 })}
+                  </div>
               </div>
             </div>
-          </div>
           {/* Lower Arch */}
           <div className="lower-arch mb-20">
             <div className="flex justify-center mb-2">
@@ -596,15 +702,15 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
                   const offset = -getArchOffset(i, 16); // invert for lower arch
                   return (
                     <div key={toothNumber} className="tooth-container" style={{ transform: `translateY(${offset}px)` }}>
-                      <ToothSvg 
-                        toothNumber={convertToothNumber(toothNumber)}
-                        toothType={getToothType(toothNumber)}
-                        condition={teethData[toothNumber]?.condition || 'healthy'}
-                        surfaces={teethData[toothNumber]?.surfaces || []}
-                        selected={selectedTooth === toothNumber}
-                        onClick={() => handleToothClick(toothNumber)}
-                      />
-                    </div>
+                    <ToothSvg 
+                      toothNumber={convertToothNumber(toothNumber)}
+                      toothType={getToothType(toothNumber)}
+                      condition={teethData[toothNumber]?.condition || 'healthy'}
+                      surfaces={teethData[toothNumber]?.surfaces || []}
+                      selected={selectedTooth === toothNumber}
+                      onClick={() => handleToothClick(toothNumber)}
+                    />
+                  </div>
                   );
                 })}
               </div>
@@ -697,17 +803,10 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   // Render tooth details panel
   const renderToothDetails = () => {
     const disabled = readOnly;
-    return (
+      return (
       <Card
         title={<span className="font-semibold">{selectedTooth ? `Tooth #${selectedTooth}` : 'Tooth Details'}</span>}
-        actions={
-          selectedTooth && !readOnly && (
-            <div className="flex gap-2">
-              <Button variant="primary" size="sm" onClick={handleSaveTooth}>Save</Button>
-              <Button variant="secondary" size="sm" onClick={() => setShowTreatmentModal(true)}>+ Treatment</Button>
-            </div>
-          )
-        }
+        // Remove actions prop to eliminate '+ Treatment' button
         className="m-4"
         bodyClassName="space-y-4"
       >
@@ -746,7 +845,7 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
           <div className="font-medium mb-1">Condition</div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
             {TOOTH_CONDITIONS.map((cond) => (
-              <button
+              <button 
                 key={cond.value}
                 type="button"
                 className={`rounded px-2 py-1 border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedCondition === cond.value ? 'border-indigo-800 scale-105 shadow' : 'border-gray-300'} text-white`}
@@ -757,36 +856,7 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
                 {cond.label}
               </button>
             ))}
-          </div>
-        </div>
-        {/* Affected Surfaces */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Affected Surfaces</label>
-          <Select
-            className="w-full"
-            isClearable
-            isSearchable
-            options={TOOTH_SURFACES.map(surf => ({ value: surf.value, label: surf.label }))}
-            value={selectedSurfaces[0] ? { value: selectedSurfaces[0], label: TOOTH_SURFACES.find(s => s.value === selectedSurfaces[0])?.label } : null}
-            onChange={handleSurfacesChange}
-            placeholder="Select a surface"
-            isDisabled={disabled}
-            styles={{
-              control: (provided, state) => ({
-                ...provided,
-                borderColor: state.isFocused ? '#6366F1' : provided.borderColor,
-                boxShadow: state.isFocused ? '0 0 0 1px #6366F1' : provided.boxShadow,
-                '&:hover': {
-                  borderColor: state.isFocused ? '#6366F1' : '#CBD5E0',
-                },
-              }),
-              option: (provided, state) => ({
-                ...provided,
-                backgroundColor: state.isSelected ? '#6366F1' : state.isFocused ? '#E2E8F0' : provided.backgroundColor,
-                color: state.isSelected ? 'white' : provided.color,
-              }),
-            }}
-          />
+            </div>
         </div>
         {/* Select Treatment Type Dropdown */}
         <div>
@@ -816,7 +886,7 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
               }),
             }}
           />
-        </div>
+              </div>
         {/* Cost (INR) */}
         <div>
           <label className="block text-sm font-medium mb-1">Cost (INR)</label>
@@ -830,7 +900,15 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             step="0.01"
             disabled={disabled}
           />
+          </div>
+        {/* Discount Method Toggle */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Discount Method</label>
+          <div className="flex gap-2 mb-2">
+            <Button variant={discountMethod === 'percent' ? 'primary' : 'secondary'} size="sm" onClick={() => setDiscountMethod('percent')}>Percent (%)</Button>
+            <Button variant={discountMethod === 'amount' ? 'primary' : 'secondary'} size="sm" onClick={() => setDiscountMethod('amount')}>Amount (₹)</Button>
         </div>
+              </div>
         {/* Discount Percent */}
         <div>
           <label className="block text-sm font-medium mb-1">Discount (%)</label>
@@ -838,14 +916,14 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             type="number"
             className="w-full border rounded px-2 py-1"
             value={discountPercent}
-            onChange={e => { setDiscountPercent(e.target.value); setLastDiscountInput('percent'); }}
+            onChange={e => { setDiscountPercent(e.target.value); setDiscountMethod('percent'); }}
             placeholder="Enter discount percent"
             min="0"
             max="100"
             step="0.01"
-            disabled={disabled}
+            disabled={disabled || discountMethod !== 'percent'}
           />
-        </div>
+          </div>
         {/* Discount Amount */}
         <div>
           <label className="block text-sm font-medium mb-1">Discount (Amount)</label>
@@ -853,11 +931,11 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             type="number"
             className="w-full border rounded px-2 py-1"
             value={discountAmount}
-            onChange={e => { setDiscountAmount(e.target.value); setLastDiscountInput('amount'); }}
+            onChange={e => { setDiscountAmount(e.target.value); setDiscountMethod('amount'); }}
             placeholder="Enter discount amount"
             min="0"
             step="0.01"
-            disabled={disabled}
+            disabled={disabled || discountMethod !== 'amount'}
           />
         </div>
         {/* Final Cost (calculated) */}
@@ -872,6 +950,18 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             disabled
           />
         </div>
+        {/* Status */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Status</label>
+          <Select
+            options={TOOTH_STATUS_OPTIONS}
+            value={TOOTH_STATUS_OPTIONS.find(opt => opt.value === selectedStatus)}
+            onChange={opt => setSelectedStatus(opt ? opt.value : 'completed')}
+            isClearable={false}
+            isDisabled={readOnly}
+            classNamePrefix="react-select"
+          />
+        </div>
         {/* Notes */}
         <div>
           <div className="font-medium mb-1">Notes</div>
@@ -884,9 +974,15 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             disabled={disabled}
           />
         </div>
+        {/* Move Save button to bottom of form */}
+        {selectedTooth && !readOnly && (
+          <div className="flex justify-end pt-4">
+            <Button variant="primary" size="sm" onClick={handleSaveTooth}>Save</Button>
+                    </div>
+        )}
         {!selectedTooth && (
           <div className="text-gray-500 text-center py-4">No tooth selected. Select a tooth to edit details.</div>
-        )}
+          )}
       </Card>
     );
   };
@@ -957,7 +1053,7 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
                   className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${treatmentTab === 'management' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                   onClick={() => setTreatmentTab('management')}
                 >
-                  Treatment Management
+                  Treatments
                 </button>
               </nav>
             </div>
@@ -965,44 +1061,53 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
             {treatmentTab === 'plan' && (
               <div>
                 {/* Planned Treatments Table/Card */}
-                {treatmentHistory.filter(t => t.status === 'planned').length === 0 ? (
-                  <div className="text-gray-400 text-center py-8">No planned treatments</div>
+                {loading ? (
+                  <div className="text-gray-400 text-center py-8">Loading treatments...</div>
+                ) : treatmentHistory.filter(t => t.patientApprovalStatus !== 'approved').length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">No treatments pending patient approval</div>
                 ) : (
                   <div className="space-y-2">
-                    {treatmentHistory.filter(t => t.status === 'planned').map((t, idx) => (
+                    {treatmentHistory.filter(t => t.patientApprovalStatus !== 'approved').map((t, idx) => (
                       <div key={t._id || idx} className="bg-white rounded shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between">
                         <div>
                           <div className="font-medium text-gray-700">{t.procedure}</div>
-                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()} | Status: {t.status} | Approval: {t.patientApprovalStatus || 'pending'}</div>
                           {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
                         </div>
                         <div className="flex gap-2 mt-2 md:mt-0">
                           <Button size="sm" variant="primary">Edit</Button>
-                          <Button size="sm" variant="danger">Delete</Button>
+                          <Button size="sm" variant="danger" onClick={() => handleDeleteTreatment(t._id)}>Delete</Button>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
-            )}
+            ))}
+          </div>
+                )}
+        </div>
+      )}
             {treatmentTab === 'management' && (
               <div>
-                {/* Completed Treatments Table/Card */}
-                {treatmentHistory.filter(t => t.status === 'completed').length === 0 ? (
-                  <div className="text-gray-400 text-center py-8">No completed treatments</div>
+                {/* Approved/Completed Treatments Table/Card */}
+                {loading ? (
+                  <div className="text-gray-400 text-center py-8">Loading treatments...</div>
+                ) : treatmentHistory.filter(t => t.patientApprovalStatus === 'approved' || t.status === 'completed').length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">No approved or completed treatments</div>
                 ) : (
                   <div className="space-y-2">
-                    {treatmentHistory.filter(t => t.status === 'completed').map((t, idx) => (
+                    {treatmentHistory.filter(t => t.patientApprovalStatus === 'approved' || t.status === 'completed').map((t, idx) => (
                       <div key={t._id || idx} className="bg-white rounded shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between">
                         <div>
                           <div className="font-medium text-gray-700">{t.procedure}</div>
-                          <div className="text-xs text-gray-500">Tooth #{t.toothNumber} | {new Date(t.date).toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-500">
+                            Tooth #{t.toothNumber} | {t.doctor ? `Doctor: ${t.doctor.name || t.doctor}` : ''} | {new Date(t.date).toLocaleDateString()} | Status: {t.status} | Approval: {t.patientApprovalStatus || 'pending'}
+        </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Cost: ₹{t.cost?.toFixed(2) || '0.00'} | Discount: {t.discountPercent ? t.discountPercent + '%' : '0%'} / ₹{t.discountAmount?.toFixed(2) || '0.00'} | Final: ₹{t.finalCost?.toFixed(2) || '0.00'}
+                          </div>
                           {t.notes && <div className="text-xs text-gray-400 mt-1">{t.notes}</div>}
                         </div>
                         <div className="flex gap-2 mt-2 md:mt-0">
                           <Button size="sm" variant="primary">Edit</Button>
-                          <Button size="sm" variant="danger">Delete</Button>
+                          <Button size="sm" variant="danger" onClick={() => handleDeleteTreatment(t._id)}>Delete</Button>
                         </div>
                       </div>
                     ))}
@@ -1061,8 +1166,8 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
                     type="radio"
                     name="status"
                     value="completed"
-                    checked={status === 'completed'}
-                    onChange={() => setStatus('completed')}
+                    checked={selectedStatus === 'completed'}
+                    onChange={() => setSelectedStatus('completed')}
                     className="mr-1"
                   />
                   <span className="text-sm">Completed</span>
@@ -1072,8 +1177,8 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
                     type="radio"
                     name="status"
                     value="planned"
-                    checked={status === 'planned'}
-                    onChange={() => setStatus('planned')}
+                    checked={selectedStatus === 'planned'}
+                    onChange={() => setSelectedStatus('planned')}
                     className="mr-1"
                   />
                   <span className="text-sm">Planned</span>

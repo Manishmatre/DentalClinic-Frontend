@@ -53,6 +53,34 @@ const billService = {
   // Create a new bill
   async createBill(billData) {
     try {
+      // Ensure clinicId is set and is a string
+      let clinicId = billData.clinicId;
+      if (clinicId && typeof clinicId === 'object') {
+        clinicId = clinicId._id || clinicId.id;
+      }
+      if (!clinicId) {
+        // Try to get from user context or localStorage
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+          try {
+            const parsed = JSON.parse(userData);
+            if (parsed && parsed.clinicId) {
+              clinicId = typeof parsed.clinicId === 'object' ? parsed.clinicId._id || parsed.clinicId.id : parsed.clinicId;
+            }
+          } catch {}
+        }
+        if (!clinicId) {
+          const clinicData = localStorage.getItem('clinicData');
+          if (clinicData) {
+            try {
+              const parsed = JSON.parse(clinicData);
+              clinicId = parsed._id || parsed.id;
+            } catch {}
+          }
+        }
+      }
+      billData.clinicId = clinicId;
+      console.log('DEBUG: Creating bill with clinicId:', clinicId, 'billData:', billData);
       const response = await client.post('/bills', billData);
       toast.success('Bill created successfully');
       return response.data;

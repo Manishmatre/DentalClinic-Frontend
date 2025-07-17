@@ -59,7 +59,23 @@ const AddPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
   async function handleSubmit(values) {
     setLoading(true);
     try {
-      const response = await billService.addPayment(bill._id, values);
+      // Map display label to backend value
+      const paymentMethodMap = {
+        'cash': 'cash',
+        'credit_card': 'credit_card',
+        'debit_card': 'debit_card',
+        'bank_transfer': 'bank_transfer',
+        'upi': 'upi',
+        'online': 'online',
+        'insurance': 'insurance',
+        'other': 'other',
+      };
+      const method = paymentMethodMap[values.paymentMethod] || 'cash';
+      console.log('DEBUG: Payment method value being sent:', method);
+      const response = await billService.addPayment(bill._id, {
+        ...values,
+        paymentMethod: method,
+      });
       if (response && !response.error) {
         toast({
           title: 'Success',
@@ -158,9 +174,10 @@ const AddPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
                 <option value="cash">Cash</option>
                 <option value="credit_card">Credit Card</option>
                 <option value="debit_card">Debit Card</option>
-                <option value="insurance">Insurance</option>
                 <option value="bank_transfer">Bank Transfer</option>
+                <option value="upi">UPI</option>
                 <option value="online">Online Payment</option>
+                <option value="insurance">Insurance</option>
                 <option value="other">Other</option>
               </Select>
               <FormErrorMessage>{formik.errors.paymentMethod}</FormErrorMessage>

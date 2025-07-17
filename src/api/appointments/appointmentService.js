@@ -531,11 +531,13 @@ const appointmentService = {
    */
   async getAppointmentStats(params = {}) {
     try {
-      // Only send date parameters, clinicId is handled by backend from user context
+      // Always include clinicId if available
       const queryParams = {
         startDate: params.startDate,
         endDate: params.endDate
       };
+      const clinicId = params.clinicId || getClinicId();
+      if (clinicId) queryParams.clinicId = clinicId;
 
       const response = await axios.get(`${API_URL}/appointments/stats`, {
         headers: getAuthHeaders(),
@@ -727,6 +729,24 @@ const appointmentService = {
         message: 'Failed to delete appointment',
         details: error.message
       };
+    }
+  },
+
+  /**
+   * Check for appointment conflicts
+   * @param {Object} params - { doctorId, startTime, endTime, clinicId }
+   * @returns {Promise<Array>} Array of conflicting appointments (if any)
+   */
+  async checkConflicts(params) {
+    try {
+      const response = await axios.get(`${API_URL}/appointments/check-conflicts`, {
+        headers: getAuthHeaders(),
+        params
+      });
+      return response.data; // Should be an array of conflicts
+    } catch (error) {
+      console.error('Error checking appointment conflicts:', error);
+      throw error;
     }
   }
 };
