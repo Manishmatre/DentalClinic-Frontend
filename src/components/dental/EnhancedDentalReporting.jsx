@@ -16,79 +16,6 @@ import dentalService from '../../api/dental/dentalService';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 
-// Demo sample data for when the backend is not available
-const SAMPLE_TREATMENTS = [
-  {
-    _id: 'tr1',
-    toothNumber: 3,
-    procedure: 'Composite Filling',
-    date: '2024-04-15T10:30:00.000Z',
-    doctor: 'Dr. John Smith',
-    cost: 120,
-    notes: 'Composite filling on occlusal surface'
-  },
-  {
-    _id: 'tr2',
-    toothNumber: 14,
-    procedure: 'Crown Placement',
-    date: '2024-03-20T09:15:00.000Z',
-    doctor: 'Dr. Sarah Johnson',
-    cost: 850,
-    notes: 'Full ceramic crown placed'
-  },
-  {
-    _id: 'tr3',
-    toothNumber: 19,
-    procedure: 'Root Canal Treatment',
-    date: '2024-02-10T14:00:00.000Z',
-    doctor: 'Dr. John Smith',
-    cost: 750,
-    notes: 'Complete root canal treatment'
-  },
-  {
-    _id: 'tr4',
-    toothNumber: 8,
-    procedure: 'Extraction',
-    date: '2024-01-05T11:45:00.000Z',
-    doctor: 'Dr. Sarah Johnson',
-    cost: 180,
-    notes: 'Simple extraction'
-  },
-  {
-    _id: 'tr5',
-    toothNumber: 30,
-    procedure: 'Root Canal Treatment',
-    date: '2024-05-02T13:30:00.000Z',
-    doctor: 'Dr. John Smith',
-    cost: 750,
-    notes: 'Complete root canal treatment followed by temporary filling'
-  },
-  {
-    _id: 'tr6',
-    toothNumber: 24,
-    procedure: 'Scaling and Root Planing',
-    date: '2024-04-28T16:00:00.000Z',
-    doctor: 'Dr. Sarah Johnson',
-    cost: 220,
-    notes: 'Deep cleaning of lower left quadrant'
-  },
-  {
-    _id: 'tr7',
-    toothNumber: 12,
-    procedure: 'Composite Filling',
-    date: '2024-04-10T10:00:00.000Z',
-    doctor: 'Dr. John Smith',
-    cost: 130,
-    notes: 'Composite filling on distal surface'
-  }
-];
-
-const SAMPLE_DOCTORS = [
-  { id: 'd1', name: 'Dr. John Smith', specialty: 'General Dentist' },
-  { id: 'd2', name: 'Dr. Sarah Johnson', specialty: 'Endodontist' },
-  { id: 'd3', name: 'Dr. Michael Chen', specialty: 'Orthodontist' }
-];
-
 // Note: This component simulates chart rendering without dependencies
 // In a real implementation, you would use Chart.js with:
 // npm install chart.js react-chartjs-2
@@ -119,56 +46,43 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // Try to get data from API
+        // Use the real reports API if available
+        let reportData;
         try {
-          const treatmentsData = await dentalService.getPatientTreatments(patientId);
-          const doctorsData = await dentalService.getDoctors();
-          const patientData = await dentalService.getPatientById(patientId);
-          
-          setTreatments(treatmentsData);
-          setDoctors(doctorsData);
-          setPatientInfo(patientData);
-        } catch (apiError) {
-          console.log('API not available, using sample data');
-          
-          // Use sample data for demo
-          setTreatments(SAMPLE_TREATMENTS);
-          setDoctors(SAMPLE_DOCTORS);
-          setPatientInfo({
-            _id: patientId,
-            name: 'Demo Patient',
-            dateOfBirth: '1990-01-01',
-            gender: 'Male',
-            phone: '(123) 456-7890',
-            email: 'patient@example.com'
-          });
+          reportData = await dentalService.getDentalReports({ patientId, startDate: dateRange.start, endDate: dateRange.end, doctorId: selectedDoctor !== 'all' ? selectedDoctor : undefined, reportType });
+        } catch (err) {
+          // Fallback to getPatientDentalTreatments if getDentalReports is not available
+          reportData = await dentalService.getPatientDentalTreatments(patientId);
         }
-        
+        // Normalize data
+        let treatmentsData = Array.isArray(reportData) ? reportData : reportData.treatments || reportData.data || [];
+        setTreatments(treatmentsData);
+        // Fetch doctors for filter
+        let doctorsData = [];
+        try {
+          doctorsData = await dentalService.getDoctors();
+        } catch {}
+        setDoctors(doctorsData);
+        // Fetch patient info
+        let patientData = null;
+        try {
+          patientData = await dentalService.getPatientById(patientId);
+        } catch {}
+        setPatientInfo(patientData);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching dental reporting data:', error);
         toast.error('Failed to load dental reporting data');
-        
-        // Use sample data as fallback
-        setTreatments(SAMPLE_TREATMENTS);
-        setDoctors(SAMPLE_DOCTORS);
-        setPatientInfo({
-          _id: patientId,
-          name: 'Demo Patient',
-          dateOfBirth: '1990-01-01',
-          gender: 'Male',
-          phone: '(123) 456-7890',
-          email: 'patient@example.com'
-        });
+        setTreatments([]);
+        setDoctors([]);
+        setPatientInfo(null);
         setLoading(false);
       }
     };
-
     if (patientId) {
       fetchData();
     }
-  }, [patientId]);
+  }, [patientId, dateRange.start, dateRange.end, selectedDoctor, reportType]);
 
   // Calculate statistics whenever treatments or filters change
   useEffect(() => {
@@ -434,7 +348,7 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
       
       const statsDiv = document.createElement('div');
       statsDiv.className = 'text-sm text-gray-600';
-      statsDiv.innerHTML = `Total Revenue: $${data.cost.toFixed(2)}`;
+      statsDiv.innerHTML = `Total Revenue: ₹${data.cost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
       
       itemDiv.appendChild(labelDiv);
       itemDiv.appendChild(statsDiv);
@@ -564,7 +478,7 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
                 </div>
                 <div className="bg-green-50 p-3 rounded-lg">
                   <p className="text-sm text-gray-600">Total Cost</p>
-                  <p className="text-2xl font-bold text-green-600">${stats.totalCost.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-green-600">₹{stats.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="bg-purple-50 p-3 rounded-lg">
                   <p className="text-sm text-gray-600">Procedures</p>
@@ -629,7 +543,7 @@ const EnhancedDentalReporting = ({ patientId, readOnly = false }) => {
                         <td className="py-2 px-3 text-sm">{treatment.toothNumber}</td>
                         <td className="py-2 px-3 text-sm">{treatment.procedure}</td>
                         <td className="py-2 px-3 text-sm">{treatment.doctor}</td>
-                        <td className="py-2 px-3 text-sm">${treatment.cost?.toFixed(2) || '0.00'}</td>
+                        <td className="py-2 px-3 text-sm">₹{treatment.cost?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}</td>
                         <td className="py-2 px-3 text-sm">{treatment.notes}</td>
                       </tr>
                     ))}

@@ -37,7 +37,8 @@ import {
   FaFile,
   FaUpload,
   FaTrash,
-  FaRupeeSign
+  FaRupeeSign,
+  FaTooth
 } from 'react-icons/fa';
 import patientService from '../../api/patients/patientService';
 import appointmentService from '../../api/appointments/appointmentService';
@@ -58,6 +59,8 @@ import DocumentUpload from '../../components/patients/DocumentUpload';
 import DocumentList from '../../components/patients/DocumentList';
 import billService from '../../api/billing/billService';
 import dentalService from '../../api/dental/dentalService';
+import DentalBilling from '../../components/dental/DentalBilling';
+import FixedDentalEHR from '../../pages/dental/FixedDentalEHR';
 
 const PatientDetails = () => {
   const { id } = useParams();
@@ -110,16 +113,20 @@ const PatientDetails = () => {
 
   // Calculate billing summary
   // Use real billing data from API (invoices array or flat array)
-  const safeBillingRecords = Array.isArray(billingRecords?.invoices)
-    ? billingRecords.invoices
-    : Array.isArray(billingRecords)
-      ? billingRecords
-      : [];
+  const safeBillingRecords = Array.isArray(billingRecords)
+    ? billingRecords
+    : Array.isArray(billingRecords?.data)
+      ? billingRecords.data
+      : Array.isArray(billingRecords?.bills)
+        ? billingRecords.bills
+        : [];
+  // Merge dentalBills for All Bills summary
+  const allBills = [...safeBillingRecords, ...dentalBills];
 
   // Overall summary (all bills, not just dental)
-  const totalTreatmentCost = safeBillingRecords.reduce((sum, bill) => sum + (bill.total || 0), 0);
-  const totalPaid = safeBillingRecords.reduce((sum, bill) => sum + (bill.paidAmount || 0), 0);
-  const totalBalance = totalTreatmentCost - totalPaid;
+  const totalTreatmentCost = allBills.reduce((sum, bill) => sum + (bill.totalAmount || bill.total || 0), 0);
+  const totalPaid = allBills.reduce((sum, bill) => sum + (bill.paidAmount || 0), 0);
+  const totalAllBillsBalance = allBills.reduce((sum, bill) => sum + (bill.balanceAmount != null ? bill.balanceAmount : ((bill.totalAmount || bill.total || 0) - (bill.paidAmount || 0))), 0);
 
   // Dental summary (from real dental bills fetched via billService)
   const dentalTreatmentCost = dentalBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
@@ -133,9 +140,9 @@ const PatientDetails = () => {
   const tabs = [
     { id: 'overview', label: 'Overview', icon: <FaUser /> },
     { id: 'medical', label: 'Medical Info', icon: <FaHeartbeat /> },
-    { id: 'prescription', label: 'Prescription', icon: <FaPills /> },
-    { id: 'treatment', label: 'Treatment', icon: <FaNotesMedical /> },
-    { id: 'examination', label: 'Examination', icon: <FaClipboardList /> },
+    { id: 'examination', label: 'Examinations', icon: <FaClipboardList /> },
+    { id: 'dental-ehr', label: 'Dental EHR', icon: <FaTooth /> },
+    { id: 'prescription', label: 'Prescriptions', icon: <FaPills /> },
     { id: 'appointments', label: 'Appointments', icon: <FaCalendarCheck /> },
     { id: 'billing', label: 'Billing', icon: <FaFileInvoiceDollar /> },
     { id: 'documents', label: 'Documents', icon: <FaFileAlt /> }
@@ -773,36 +780,37 @@ const PatientDetails = () => {
               </div>
             </div>
           </div>
-          {/* Billing Summary Card */}
-          <div className="w-full md:w-80 mt-6 md:mt-0 md:ml-8">
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg shadow p-2 flex flex-col items-center min-h-0">
-              <div className="text-base font-semibold text-gray-700 mb-1 flex items-center">
-                <FaFileInvoiceDollar className="mr-2 text-indigo-500" /> Billing Summary
+          {/* Compact Billing Summary Card */}
+          <div className="w-full md:w-auto mt-4 md:mt-0 md:ml-8">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg shadow p-3 flex flex-col md:flex-row items-center md:items-stretch gap-2 md:gap-4">
+              <div className="flex-1 flex flex-col items-center md:items-start justify-center">
+                <div className="text-base font-semibold text-gray-700 flex items-center mb-1">
+                  <FaFileInvoiceDollar className="mr-2 text-indigo-500" /> All Bills
+                </div>
+                <div className="text-xs text-gray-800 mb-0.5">
+                  Treatment: <span className="font-bold text-blue-700">₹{totalTreatmentCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-xs text-gray-800 mb-0.5">
+                  Paid: <span className="font-bold text-green-700">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-xs text-gray-800">
+                  Balance: <span className="font-bold text-red-700">₹{totalAllBillsBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
               </div>
-              <div className="text-sm text-gray-800 mb-0.5">
-                <span className="font-semibold">All Bills:</span>
-              </div>
-              <div className="text-xs text-gray-800 mb-0.5">
-                Treatment Cost (from Treatments): <span className="font-bold text-blue-700">INR {totalTreatmentCostFromTreatments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="text-xs text-gray-800 mb-0.5">
-                Paid: <span className="font-bold text-green-700">INR {totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="text-xs text-gray-800 mb-2">
-                Balance: <span className="font-bold text-red-700">INR {totalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="w-full border-t border-blue-200 my-1"></div>
-              <div className="text-sm text-gray-800 mb-0.5">
-                <span className="font-semibold">Dental Bills:</span>
-              </div>
-              <div className="text-xs text-gray-800 mb-0.5">
-                Treatment Cost: <span className="font-bold text-blue-700">INR {dentalTreatmentCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="text-xs text-gray-800 mb-0.5">
-                Paid: <span className="font-bold text-green-700">INR {dentalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="text-xs text-gray-800">
-                Balance: <span className="font-bold text-red-700">INR {dentalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <div className="hidden md:block w-px bg-blue-200 mx-2"></div>
+              <div className="flex-1 flex flex-col items-center md:items-start justify-center">
+                <div className="text-base font-semibold text-gray-700 flex items-center mb-1">
+                  <FaFileInvoiceDollar className="mr-2 text-indigo-500" /> Dental Bills
+                </div>
+                <div className="text-xs text-gray-800 mb-0.5">
+                  Treatment: <span className="font-bold text-blue-700">₹{dentalTreatmentCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-xs text-gray-800 mb-0.5">
+                  Paid: <span className="font-bold text-green-700">₹{dentalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-xs text-gray-800">
+                  Balance: <span className="font-bold text-red-700">₹{dentalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1080,29 +1088,9 @@ const PatientDetails = () => {
             </div>
           )}
 
-          {/* Prescription Tab */}
-          {activeTab === 'prescription' && (
-            <div>
-              <PrescriptionList patientId={id} readOnly={false} />
-            </div>
-          )}
-
-          {/* Treatment Tab */}
-          {activeTab === 'treatment' && (
-            <div>
-              <TreatmentHistory patientId={id} />
-            </div>
-          )}
-
           {/* Examination Tab */}
           {activeTab === 'examination' && (
             <div>
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded mb-4"
-                onClick={() => navigate(`/admin/patient/${patient._id}/dental`)}
-              >
-                Dental Chart
-              </button>
               <ExaminationList
                 examinations={examinations}
                 loading={examinationsLoading}
@@ -1116,6 +1104,20 @@ const PatientDetails = () => {
                 onSubmit={handleSaveExamination}
                 loading={examinationFormLoading}
               />
+            </div>
+          )}
+
+          {/* Prescription Tab */}
+          {activeTab === 'prescription' && (
+            <div>
+              <PrescriptionList patientId={id} readOnly={false} />
+            </div>
+          )}
+
+          {/* Treatment Tab */}
+          {activeTab === 'treatment' && (
+            <div>
+              <TreatmentHistory patientId={id} />
             </div>
           )}
 
@@ -1163,60 +1165,10 @@ const PatientDetails = () => {
 
           {/* Billing Tab */}
           {activeTab === 'billing' && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-lg overflow-hidden border border-gray-200">
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-                    <FaFileInvoiceDollar className="mr-2 text-green-500" /> Billing Information
-                  </h3>
-                </div>
-                <div className="p-4">
-                  {billingLoading ? (
-                    <div className="flex justify-center items-center py-8">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
-                      <p className="ml-3 text-gray-600">Loading billing records...</p>
-                    </div>
-                  ) : billingRecords && billingRecords.length > 0 ? (
-                    <div className="space-y-4">
-                      {billingRecords.map((bill, index) => (
-                        <div key={index} className="p-4 border rounded-lg bg-white shadow-sm">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <p className="text-sm text-gray-500">Invoice #</p>
-                              <p className="text-gray-900">{bill.invoiceNumber}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-500">Date</p>
-                              <p className="text-gray-900">{formatDate(bill.date)}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-500">Amount</p>
-                              <p className="text-gray-900">${bill.amount.toFixed(2)}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-500">Status</p>
-                              <p className="text-gray-900">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  bill.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                                  bill.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}>
-                                  {bill.status}
-                                </span>
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-center text-gray-500 bg-gray-50 rounded-lg">
-                      <FaFileInvoiceDollar className="mx-auto text-gray-400 text-4xl mb-2" />
-                      <p>No billing records available</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div>
+              <Card className="mb-6">
+                <DentalBilling bills={billingRecords} readOnly patientId={id} />
+              </Card>
             </div>
           )}
 
@@ -1246,6 +1198,13 @@ const PatientDetails = () => {
                   <DocumentUpload patientId={id} onUploadComplete={() => { setShowUploadModal(false); handleUploadComplete(); }} />
                 </Modal>
               )}
+            </div>
+          )}
+
+          {/* Dental EHR Tab */}
+          {activeTab === 'dental-ehr' && (
+            <div>
+              <FixedDentalEHR patientId={id} />
             </div>
           )}
         </div>

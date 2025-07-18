@@ -18,8 +18,10 @@ import { FaPlus, FaEdit, FaTrash, FaCheck } from 'react-icons/fa';
 import { CSVLink } from 'react-csv';
 import TreatmentList from '../../components/dental/TreatmentList';
 
-const FixedDentalEHR = () => {
-  const { patientId } = useParams();
+const FixedDentalEHR = (props) => {
+  const { patientId: paramPatientId } = useParams();
+  const patientId = props.patientId || paramPatientId;
+  console.log('FixedDentalEHR patientId:', patientId);
   const navigate = useNavigate();
   const { user } = useAuth();
   const [patient, setPatient] = useState(null);
@@ -255,72 +257,10 @@ const FixedDentalEHR = () => {
     { id: 'treatment-management', label: 'Treatments', icon: <FaHistory /> },
     { id: 'images', label: 'Dental Images', icon: <FaImage /> },
     { id: 'reports', label: 'Reports', icon: <FaChartBar /> },
-    { id: 'prescriptions', label: 'Prescriptions', icon: <FaFileMedical /> },
-    { id: 'billing', label: 'Billing', icon: <FaFileInvoiceDollar /> },
   ];
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center">
-          <Button
-            variant="outline"
-            onClick={() => navigate(-1)}
-            className="mr-4"
-          >
-            <FaArrowLeft className="mr-2" /> Back
-          </Button>
-          <h1 className="text-2xl font-bold text-gray-800">Dental EHR</h1>
-        </div>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => window.print()}
-            className="flex items-center"
-          >
-            <FaPrint className="mr-2" /> Print
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => toast.success('PDF Export feature will be implemented soon')}
-            className="flex items-center"
-          >
-            <FaFilePdf className="mr-2" /> Export PDF
-          </Button>
-        </div>
-      </div>
-      <Card className="mb-6">
-        <div className="flex flex-col md:flex-row items-center md:items-start p-6">
-          <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-indigo-100 bg-gray-100 flex items-center justify-center mb-4 md:mb-0 md:mr-6">
-            <FaTooth className="text-indigo-400 text-5xl" />
-          </div>
-          <div className="flex-1 text-center md:text-left">
-            <div className="flex flex-col md:flex-row md:items-center mb-2">
-              <h2 className="text-2xl font-bold text-gray-800 mr-2">{patient.name}</h2>
-            </div>
-            <div className="flex flex-col md:flex-row md:items-center text-gray-600 mb-4">
-              <div className="flex items-center justify-center md:justify-start mb-2 md:mb-0 md:mr-4">
-                <FaIdCard className="text-indigo-600 mr-1" />
-                <span>ID: {patient._id}</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center justify-center md:justify-start">
-                <FaCalendarAlt className="text-orange-500 mr-2" />
-                <span>DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center justify-center md:justify-start">
-                <FaVenusMars className="text-pink-500 mr-2" />
-                <span>{patient.gender}</span>
-              </div>
-              <div className="flex items-center justify-center md:justify-start">
-                <FaPhone className="text-green-500 mr-2" />
-                <span>{patient.phone}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
+    <div className="p-0">
       <Card className="mb-6 overflow-hidden">
         <Tabs tabs={dentalTabs} activeTab={activeTab} onChange={setActiveTab} className="border-b border-gray-200" />
         <div className="p-6">
@@ -344,17 +284,8 @@ const FixedDentalEHR = () => {
           {activeTab === 'reports' && (
             <EnhancedDentalReporting patientId={patientId} readOnly={!canEditDental} />
           )}
-          {activeTab === 'prescriptions' && (
-            <PrescriptionList patientId={patientId} readOnly={!canEditDental} />
-          )}
-          {activeTab === 'billing' && (
-            <DentalBilling patientId={patientId} readOnly={!canEditDental} />
-          )}
         </div>
       </Card>
-      <div className="text-right text-sm text-gray-500 mt-4">
-        Last updated: {lastUpdated}
-      </div>
     </div>
   );
 };

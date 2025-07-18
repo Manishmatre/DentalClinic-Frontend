@@ -15,6 +15,9 @@ import LineChart from '../dashboard/LineChart';
 import BarChart from '../dashboard/BarChart';
 import PieChart from '../dashboard/PieChart';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import DatePicker from '../ui/DatePicker';
+import AsyncSelect from 'react-select/async';
+import staffService from '../../api/staff/staffService';
 
 const TAB_DASHBOARD = 'dashboard';
 const TAB_PAYROLL = 'payroll';
@@ -54,6 +57,35 @@ const PayrollManagement = () => {
   const [attendanceAnalytics, setAttendanceAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState(null);
+  // Reports tab state
+  const [reportDateRange, setReportDateRange] = useState({ start: null, end: null });
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [reportStatus, setReportStatus] = useState('');
+  const [dateFilterType, setDateFilterType] = useState('month'); // 'day', 'week', 'month', 'custom'
+
+  // Helper to set date range for quick filters
+  const setQuickDateRange = (type) => {
+    const now = new Date();
+    let start, end;
+    if (type === 'day') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (type === 'week') {
+      const day = now.getDay();
+      start = new Date(now);
+      start.setDate(now.getDate() - day + (day === 0 ? -6 : 1)); // Monday
+      end = new Date(start);
+      end.setDate(start.getDate() + 6); // Sunday
+    } else if (type === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else {
+      start = reportDateRange.start;
+      end = reportDateRange.end;
+    }
+    setReportDateRange({ start, end });
+    setDateFilterType(type);
+  };
 
   // Fetch payrolls on mount
   useEffect(() => { fetchPayrolls(); }, []);
@@ -204,6 +236,50 @@ const PayrollManagement = () => {
   const handleDeleteConfirm = () => {
     if (deleteType === 'payroll') confirmDeletePayroll();
     else if (deleteType === 'attendance') confirmDeleteAttendance();
+  };
+
+  // Dummy employee loader for AsyncSelect
+  const loadEmployeeOptions = async (inputValue) => {
+    // Replace with real API call if needed
+    const res = await staffService.getStaff({ search: inputValue, status: 'Active' });
+    return (res.data || []).map(staff => ({ value: staff._id, label: staff.name }));
+  };
+  // Filtered data for reports
+  const filteredPayrolls = payrolls.filter(p => {
+    if (selectedEmployee && p.employeeId !== selectedEmployee.value) return false;
+    if (reportStatus && p.status !== reportStatus) return false;
+    // Date range filter (if implemented)
+    return true;
+  });
+  const filteredAttendance = attendance.filter(a => {
+    if (selectedEmployee && a.employeeId !== selectedEmployee.value) return false;
+    if (reportStatus && a.status !== reportStatus) return false;
+    // Date range filter (if implemented)
+    return true;
+  });
+  // Export handlers (CSV only for now)
+  const handleExportCSV = () => {
+    let csv = 'Type,Employee,Date,Status,Amount/In,Out\n';
+    filteredPayrolls.forEach(p => {
+      csv += `Payroll,${p.employeeName || p.employeeId},${p.date || ''},${p.status || ''},${p.amount || ''},,\n`;
+    });
+    filteredAttendance.forEach(a => {
+      let inTime = '', outTime = '';
+      if (a.punches && a.punches.length > 0) {
+        const punchesIn = a.punches.filter(p => p.type === 'IN');
+        const punchesOut = a.punches.filter(p => p.type === 'OUT');
+        if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
+        if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
+      }
+      csv += `Attendance,${a.employeeName || a.employeeId},${a.date || ''},${a.status || ''},${inTime},${outTime}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_attendance_report.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Render dashboard analytics
@@ -537,7 +613,168 @@ const PayrollManagement = () => {
       )}
       {activeTab === TAB_REPORTS && (
         <Card title="Payroll & Attendance Reports">
-          <div className="text-gray-500">Reporting and export options will appear here.</div>
+          {/* Filters */}
+          <div className="mb-4 flex flex-wrap gap-4 items-center">
+            {/* Quick Date Filters */}
+            <div className="flex gap-2">
+              <Button variant={dateFilterType === 'day' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('day')}>Today</Button>
+              <Button variant={dateFilterType === 'week' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('week')}>This Week</Button>
+              <Button variant={dateFilterType === 'month' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('month')}>This Month</Button>
+              <Button variant={dateFilterType === 'custom' ? 'primary' : 'outline'} size="sm" onClick={() => setDateFilterType('custom')}>Custom</Button>
+            </div>
+            {/* DatePicker only for custom */}
+            {dateFilterType === 'custom' && (
+              <DatePicker
+                range
+                value={{
+                  start: reportDateRange.start ? new Date(reportDateRange.start) : null,
+                  end: reportDateRange.end ? new Date(reportDateRange.end) : null
+                }}
+                onChange={setReportDateRange}
+                className="border rounded px-2 py-1"
+              />
+            )}
+            <AsyncSelect
+              cacheOptions
+              defaultOptions
+              loadOptions={loadEmployeeOptions}
+              onChange={setSelectedEmployee}
+              placeholder="Select Employee"
+              className="w-64"
+            />
+            <select
+              value={reportStatus}
+              onChange={e => setReportStatus(e.target.value)}
+              className="border rounded px-2 py-1"
+            >
+              <option value="">All Statuses</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+              <option value="absent">Absent</option>
+              <option value="present">Present</option>
+            </select>
+            <Button onClick={handleExportCSV} variant="info">Export CSV</Button>
+          </div>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card>
+              <div className="p-4">
+                <h3 className="text-lg font-semibold">Payroll Records</h3>
+                <p className="text-2xl font-bold">{filteredPayrolls.length}</p>
+              </div>
+            </Card>
+            <Card>
+              <div className="p-4">
+                <h3 className="text-lg font-semibold">Attendance Records</h3>
+                <p className="text-2xl font-bold">{filteredAttendance.length}</p>
+              </div>
+            </Card>
+            <Card>
+              <div className="p-4">
+                <h3 className="text-lg font-semibold">Total Payroll Amount</h3>
+                <p className="text-2xl font-bold">₹{filteredPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}</p>
+              </div>
+            </Card>
+          </div>
+          {/* Charts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <Card title="Payroll Trend">
+              <LineChart data={payrollAnalytics ? {
+                labels: payrollAnalytics.trend.map(t => `${t.month}/${t.year}`),
+                datasets: [{
+                  label: 'Payroll Amount',
+                  data: payrollAnalytics.trend.map(t => t.total),
+                  borderColor: '#4F46E5',
+                  backgroundColor: 'rgba(79,70,229,0.1)',
+                  fill: true,
+                  tension: 0.4
+                }]
+              } : { labels: [], datasets: [] }} height={250} />
+            </Card>
+            <Card title="Attendance Trend">
+              <LineChart data={attendanceAnalytics ? {
+                labels: attendanceAnalytics.trend.map(t => `${t.month}/${t.year}`),
+                datasets: [
+                  {
+                    label: 'Present',
+                    data: attendanceAnalytics.trend.map(t => t.present),
+                    borderColor: '#10B981',
+                    backgroundColor: 'rgba(16,185,129,0.1)',
+                    fill: true,
+                    tension: 0.4
+                  },
+                  {
+                    label: 'Absent',
+                    data: attendanceAnalytics.trend.map(t => t.absent),
+                    borderColor: '#EF4444',
+                    backgroundColor: 'rgba(239,68,68,0.1)',
+                    fill: true,
+                    tension: 0.4
+                  },
+                  {
+                    label: 'On Leave',
+                    data: attendanceAnalytics.trend.map(t => t.onLeave),
+                    borderColor: '#F59E42',
+                    backgroundColor: 'rgba(245,158,66,0.1)',
+                    fill: true,
+                    tension: 0.4
+                  }
+                ]
+              } : { labels: [], datasets: [] }} height={250} />
+            </Card>
+          </div>
+          {/* Consolidated Table */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-2">Payroll & Attendance Records</h3>
+            <div className="overflow-x-auto rounded-lg shadow border border-gray-200 bg-white">
+              <table className="min-w-full table-fixed text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 font-medium text-gray-600">Type</th>
+                    <th className="px-4 py-2 font-medium text-gray-600">Employee</th>
+                    <th className="px-4 py-2 font-medium text-gray-600">Date</th>
+                    <th className="px-4 py-2 font-medium text-gray-600">Status</th>
+                    <th className="px-4 py-2 font-medium text-gray-600">Amount/In</th>
+                    <th className="px-4 py-2 font-medium text-gray-600">Out</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPayrolls.map(p => (
+                    <tr key={`payroll-${p._id}`}> 
+                      <td className="px-4 py-2">Payroll</td>
+                      <td className="px-4 py-2">{p.employeeName || p.employeeId}</td>
+                      <td className="px-4 py-2">{p.date || '-'}</td>
+                      <td className="px-4 py-2">{p.status || '-'}</td>
+                      <td className="px-4 py-2">₹{p.amount || 0}</td>
+                      <td className="px-4 py-2">-</td>
+                    </tr>
+                  ))}
+                  {filteredAttendance.map(a => {
+                    let inTime = '', outTime = '';
+                    if (a.punches && a.punches.length > 0) {
+                      const punchesIn = a.punches.filter(p => p.type === 'IN');
+                      const punchesOut = a.punches.filter(p => p.type === 'OUT');
+                      if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
+                      if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
+                    }
+                    return (
+                      <tr key={`attendance-${a._id}`}> 
+                        <td className="px-4 py-2">Attendance</td>
+                        <td className="px-4 py-2">{a.employeeName || a.employeeId}</td>
+                        <td className="px-4 py-2">{a.date || '-'}</td>
+                        <td className="px-4 py-2">{a.status || '-'}</td>
+                        <td className="px-4 py-2">{inTime}</td>
+                        <td className="px-4 py-2">{outTime}</td>
+                      </tr>
+                    );
+                  })}
+                  {filteredPayrolls.length === 0 && filteredAttendance.length === 0 && (
+                    <tr><td colSpan={6} className="text-center text-gray-400 py-6">No records found for selected filters.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </Card>
       )}
 

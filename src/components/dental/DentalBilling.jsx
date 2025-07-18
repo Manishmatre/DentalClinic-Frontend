@@ -167,12 +167,15 @@ const DentalBillList = ({ patientId, readOnly, bills: billsProp, loading: loadin
     setRefreshingBill(false);
   };
 
+  // Ensure bills is always an array
+  const safeBills = Array.isArray(bills) ? bills : [];
+
   // Filter, search, and paginate
-  const filteredBills = bills.filter(bill => {
+  const filteredBills = safeBills.filter(bill => {
     if (statusFilter !== 'all' && bill.paymentStatus !== statusFilter) return false;
     if (search) {
       const s = search.toLowerCase();
-    return (
+      return (
         (bill.invoiceNumber && bill.invoiceNumber.toLowerCase().includes(s)) ||
         (bill.doctorId?.name && bill.doctorId.name.toLowerCase().includes(s))
       );
@@ -344,7 +347,7 @@ const DentalBillList = ({ patientId, readOnly, bills: billsProp, loading: loadin
         <div className="text-gray-400 text-center py-8">No bills found</div>
       ) : (
             <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full table-fixed divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
@@ -354,7 +357,7 @@ const DentalBillList = ({ patientId, readOnly, bills: billsProp, loading: loadin
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 max-w-xs">Notes</th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -403,7 +406,7 @@ const DentalBillList = ({ patientId, readOnly, bills: billsProp, loading: loadin
                       pill
                         />
                       </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.notes || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate" title={bill.notes}>{bill.notes || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                     <div className="flex justify-center items-center space-x-2">
                       <button

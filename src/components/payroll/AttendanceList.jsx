@@ -11,6 +11,12 @@ import staffService from '../../api/staff/staffService';
 import DatePicker from '../ui/DatePicker';
 import { useAuth } from '../../context/AuthContext';
 
+// Helper to get local date string in YYYY-MM-DD
+function getLocalDateString(date) {
+  if (!(date instanceof Date)) return undefined;
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
+
 const AttendanceList = ({
   attendance = [],
   loading = false,
@@ -41,7 +47,7 @@ const AttendanceList = ({
   const [punchType, setPunchType] = useState('IN');
   const [punchNote, setPunchNote] = useState('');
   const [punchLocation, setPunchLocation] = useState('');
-  const [punchLoading, setPunchLoading] = useState(false);
+  const [punchLoading, setPunchLoading] = useState({}); // { [staffId_action]: true }
   const [showBulkPunchModal, setShowBulkPunchModal] = useState(false);
   const [bulkEmployees, setBulkEmployees] = useState([]);
   const [bulkPunchType, setBulkPunchType] = useState('IN');
@@ -51,14 +57,15 @@ const AttendanceList = ({
   const [allStaff, setAllStaff] = useState([]);
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().slice(0, 10);
+    return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
   });
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [showPunchLogModal, setShowPunchLogModal] = useState(false);
   const [punchLog, setPunchLog] = useState([]);
   const [punchLogStaff, setPunchLogStaff] = useState(null);
   const { user } = useAuth ? useAuth() : { user: { role: 'Admin' } };
-  const [actionLoading, setActionLoading] = useState(false);
+  const [markLoading, setMarkLoading] = useState({}); // { [staffId_status]: true }
+  const [punchLogLoadingId, setPunchLogLoadingId] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   // Fetch all staff on mount
@@ -148,12 +155,14 @@ const AttendanceList = ({
     e.preventDefault();
     setPunchLoading(true);
     try {
-      await attendanceService.punch({ type: punchType, note: punchNote, location: punchLocation });
+      const dateToSend = typeof selectedDate === 'string' ? selectedDate : getLocalDateString(selectedDate);
+      await attendanceService.punch({ type: punchType, note: punchNote, location: punchLocation, date: dateToSend });
       setShowPunchModal(false);
       setPunchNote('');
       setPunchLocation('');
       setPunchType('IN');
       toast.success('Punch recorded!');
+      await refreshAttendance();
     } catch (err) {
       toast.error('Failed to record punch');
     } finally {
@@ -174,9 +183,10 @@ const AttendanceList = ({
     e.preventDefault();
     setBulkPunchLoading(true);
     let success = 0, fail = 0;
+    const dateToSend = typeof selectedDate === 'string' ? selectedDate : getLocalDateString(selectedDate);
     for (const emp of bulkEmployees) {
       try {
-        await attendanceService.punch({ employeeId: emp.value, employeeName: emp.label, type: bulkPunchType, note: bulkPunchNote, location: bulkPunchLocation });
+        await attendanceService.punch({ employeeId: emp.value, employeeName: emp.label, type: bulkPunchType, note: bulkPunchNote, location: bulkPunchLocation, date: dateToSend });
         success++;
       } catch {
         fail++;
@@ -189,28 +199,31 @@ const AttendanceList = ({
     setBulkPunchType('IN');
     toast.success(`Punch recorded for ${success} staff${fail ? ", failed for " + fail : ''}`);
     setBulkPunchLoading(false);
+    await refreshAttendance();
   };
 
   const refreshAttendance = async () => {
     if (fetchAttendance) await fetchAttendance();
   };
   const handleQuickMark = async (staff, status) => {
-    setActionLoading(true);
+    const key = staff._id + '_' + status;
+    setMarkLoading(prev => ({ ...prev, [key]: true }));
     try {
+      const dateToSend = typeof selectedDate === 'string' ? selectedDate : getLocalDateString(selectedDate);
       // Always update or create the attendance record for staff/date
       const existing = attendanceForDate.find(a => a.employeeId === staff._id || a.employeeId === staff.employeeId);
       if (existing) {
         await attendanceService.updateAttendance(existing._id, {
           employeeId: staff._id,
           employeeName: staff.name,
-          date: selectedDate,
+          date: dateToSend,
           status
         });
       } else {
         await attendanceService.addAttendance({
           employeeId: staff._id,
           employeeName: staff.name,
-          date: selectedDate,
+          date: dateToSend,
           status
         });
       }
@@ -219,7 +232,11 @@ const AttendanceList = ({
     } catch {
       toast.error('Failed to mark attendance');
     } finally {
-      setActionLoading(false);
+      setMarkLoading(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
     }
   };
   const handleShowPunchLog = (attendance, staff) => {
@@ -232,7 +249,7 @@ const AttendanceList = ({
     setShowDeleteConfirm(true);
   };
   const confirmDelete = async () => {
-    setActionLoading(true);
+    setPunchLogLoadingId(deleteTarget._id); // Use deleteTarget._id for loading state
     try {
       await onDeleteAttendance(deleteTarget);
       toast.success('Attendance deleted');
@@ -240,7 +257,7 @@ const AttendanceList = ({
     } catch {
       toast.error('Failed to delete attendance');
     } finally {
-      setActionLoading(false);
+      setPunchLogLoadingId(null);
       setShowDeleteConfirm(false);
       setDeleteTarget(null);
     }
@@ -267,6 +284,36 @@ const AttendanceList = ({
     URL.revokeObjectURL(url);
   };
 
+  // Handle punch in/out action
+  const handlePunchAction = async (staff, type) => {
+    const key = staff._id + '_' + type;
+    setPunchLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const dateToSend = typeof selectedDate === 'string' ? selectedDate : getLocalDateString(selectedDate);
+      await attendanceService.punch({
+        employeeId: staff._id,
+        employeeName: staff.name,
+        type,
+        date: dateToSend
+      });
+      await refreshAttendance();
+      toast.success(`Punch ${type === 'IN' ? 'In' : 'Out'} recorded!`);
+    } catch (err) {
+      if (err?.response?.data?.message) {
+        toast.error(err.response.data.message);
+      } else {
+        toast.error('Failed to record punch');
+      }
+      await refreshAttendance();
+    } finally {
+      setPunchLoading(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+    }
+  };
+
   if (showCalendar) {
     // Lazy load AttendanceCalendar (to be created)
     const AttendanceCalendar = React.lazy(() => import('./AttendanceCalendar'));
@@ -285,7 +332,16 @@ const AttendanceList = ({
         <div className="mb-2 md:mb-0">
           <DatePicker
             value={selectedDate}
-            onChange={date => setSelectedDate(date.target ? date.target.value : date)}
+            onChange={date => {
+              if (date instanceof Date && !isNaN(date)) {
+                const localDateString = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+                setSelectedDate(localDateString);
+              } else if (typeof date === 'string') {
+                setSelectedDate(date);
+              } else {
+                setSelectedDate('');
+              }
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
@@ -321,13 +377,6 @@ const AttendanceList = ({
             className="flex items-center text-sm"
           >
             <FaCalendarAlt className="mr-1" /> Calendar View
-          </Button>
-          <Button
-            onClick={() => setShowPunchModal(true)}
-            variant="success"
-            className="flex items-center text-sm"
-          >
-            Punch In/Out
           </Button>
           <Button
             onClick={() => setShowBulkPunchModal(true)}
@@ -557,43 +606,54 @@ const AttendanceList = ({
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{typeof outTime === 'string' ? outTime : (outTime ? outTime.toString() : '-')}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
+                        {/* Only show mark present/absent/on leave if not marked */}
                         {!attendance && user.role === 'Admin' && (
                           <>
-                            <Button size="sm" variant="success" onClick={() => handleQuickMark(staff, 'Present')} disabled={actionLoading || attendanceExists}>Mark Present</Button>
-                            <Button size="sm" variant="danger" onClick={() => handleQuickMark(staff, 'Absent')} disabled={actionLoading || attendanceExists}>Mark Absent</Button>
-                            <Button size="sm" variant="warning" onClick={() => handleQuickMark(staff, 'On Leave')} disabled={actionLoading || attendanceExists}>Mark On Leave</Button>
+                            <Button size="sm" variant="success" onClick={() => handleQuickMark(staff, 'Present')} disabled={!!markLoading[staff._id + '_Present'] || attendanceExists} loading={!!markLoading[staff._id + '_Present']}>
+                              Mark Present
+                            </Button>
+                            <Button size="sm" variant="danger" onClick={() => handleQuickMark(staff, 'Absent')} disabled={!!markLoading[staff._id + '_Absent'] || attendanceExists} loading={!!markLoading[staff._id + '_Absent']}>
+                              Mark Absent
+                            </Button>
+                            <Button size="sm" variant="warning" onClick={() => handleQuickMark(staff, 'On Leave')} disabled={!!markLoading[staff._id + '_On Leave'] || attendanceExists} loading={!!markLoading[staff._id + '_On Leave']}>
+                              Mark On Leave
+                            </Button>
                           </>
                         )}
+                        {/* If present, show punch in time and punch action */}
+                        {attendance && attendance.status === 'Present' && (
+                          <>
+                            {/* Show punch in time if exists */}
+                            {attendance.punches && attendance.punches.length > 0 && (
+                              <span className="text-xs text-green-700 bg-green-50 rounded px-2 py-1 mr-2">
+                                In: {(() => {
+                                  const punchesIn = attendance.punches.filter(p => p.type === 'IN');
+                                  return punchesIn.length > 0 ? new Date(punchesIn[punchesIn.length - 1].timeIn).toLocaleTimeString() : '-';
+                                })()}
+                              </span>
+                            )}
+                            {/* Show punch out/in button depending on last punch */}
+                            {(() => {
+                              const lastPunch = attendance.punches && attendance.punches.length > 0 ? attendance.punches[attendance.punches.length - 1] : null;
+                              const inCount = attendance.punches ? attendance.punches.filter(p => p.type === 'IN').length : 0;
+                              const outCount = attendance.punches ? attendance.punches.filter(p => p.type === 'OUT').length : 0;
+                              // Hide punch buttons if both IN and OUT exist
+                              if (inCount >= 1 && outCount >= 1) return null;
+                              if (!lastPunch || lastPunch.type === 'OUT') {
+                                const key = staff._id + '_IN';
+                                return <Button size="sm" variant="success" onClick={() => handlePunchAction(staff, 'IN')} disabled={!!punchLoading[key]} loading={!!punchLoading[key]}>Punch In</Button>;
+                              } else {
+                                const key = staff._id + '_OUT';
+                                return <Button size="sm" variant="warning" onClick={() => handlePunchAction(staff, 'OUT')} disabled={!!punchLoading[key]} loading={!!punchLoading[key]}>Punch Out</Button>;
+                              }
+                            })()}
+                          </>
+                        )}
+                        {/* Only show punch log if attendance exists */}
                         {attendance && (
-                          <Button size="sm" variant="info" onClick={() => handleShowPunchLog(attendance, staff)} disabled={actionLoading}>
+                          <Button size="sm" variant="info" onClick={() => handleShowPunchLog(attendance, staff)} disabled={punchLogLoadingId === staff._id} loading={punchLogLoadingId === staff._id}>
                             <FaClock className="mr-1" /> View Punch Log
                           </Button>
-                        )}
-                        {attendance && user.role === 'Admin' && (
-                          <>
-                            <button
-                              onClick={() => onEditAttendance(attendance)}
-                              className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center"
-                              title="Edit Attendance"
-                              disabled={actionLoading}
-                            >
-                              <FaEdit size={16} />
-                              <span className="ml-1 hidden sm:inline">Edit</span>
-                            </button>
-                            <button
-                              onClick={() => handleDelete(attendance)}
-                              className="text-red-600 hover:text-red-900 transition-colors duration-200 flex items-center"
-                              title="Delete Attendance"
-                              disabled={actionLoading}
-                            >
-                              <FaTrash size={16} />
-                              <span className="ml-1 hidden sm:inline">Delete</span>
-                            </button>
-                          </>
-                        )}
-                        {/* Disable punch actions if Absent/On Leave */}
-                        {attendance && (
-                          <Button size="sm" variant="success" onClick={() => setShowPunchModal(true)} disabled={punchDisabled || actionLoading}>Punch In/Out</Button>
                         )}
                       </div>
                     </td>
@@ -606,28 +666,47 @@ const AttendanceList = ({
       </div>
       {/* Punch Log Modal */}
       <Modal isOpen={showPunchLogModal} onClose={() => setShowPunchLogModal(false)} title={`Punch Log for ${punchLogStaff ? punchLogStaff.name : ''} (${selectedDate})`}>
-        {punchLog.length === 0 ? (
-          <div className="text-gray-500">No punch records for this day.</div>
-        ) : (
-          <ul className="space-y-2">
-            {punchLog.map((p, idx) => (
-              <li key={idx} className="border-b pb-2">
-                <div><b>Type:</b> {p.type}</div>
-                <div><b>Time In:</b> {p.timeIn ? new Date(p.timeIn).toLocaleTimeString() : '-'}</div>
-                <div><b>Time Out:</b> {p.timeOut ? new Date(p.timeOut).toLocaleTimeString() : '-'}</div>
-                {p.note && <div><b>Note:</b> {p.note}</div>}
-                {p.location && <div><b>Location:</b> {p.location}</div>}
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* Show status badge */}
+        {(() => {
+          const attendance = punchLogStaff && attendanceForDate.find(a => a.employeeId === punchLogStaff._id || a.employeeId === punchLogStaff.employeeId);
+          const status = attendance ? attendance.status : 'Not Marked';
+          let badgeClass = 'bg-gray-100 text-gray-500';
+          if (status === 'Present') badgeClass = 'bg-green-100 text-green-800';
+          else if (status === 'Absent') badgeClass = 'bg-red-100 text-red-800';
+          else if (status === 'On Leave') badgeClass = 'bg-yellow-100 text-yellow-800';
+          return (
+            <div className={`mb-4 inline-block px-3 py-1 rounded-full text-xs font-semibold ${badgeClass}`}>{status}</div>
+          );
+        })()}
+        {(() => {
+          const attendance = punchLogStaff && attendanceForDate.find(a => a.employeeId === punchLogStaff._id || a.employeeId === punchLogStaff.employeeId);
+          const status = attendance ? attendance.status : 'Not Marked';
+          if (status !== 'Present') {
+            return <div className="text-gray-500">No punch records for this day (status: {status}).</div>;
+          }
+          if (!attendance || !attendance.punches || attendance.punches.length === 0) {
+            return <div className="text-gray-500">No punch records for this day.</div>;
+          }
+          return (
+            <ul className="space-y-2">
+              {attendance.punches.map((p, idx) => (
+                <li key={idx} className="border-b pb-2">
+                  <div><b>Type:</b> {p.type}</div>
+                  <div><b>Time:</b> {p.timeIn ? new Date(p.timeIn).toLocaleTimeString() : '-'}</div>
+                  {p.note && <div><b>Note:</b> {p.note}</div>}
+                  {p.location && <div><b>Location:</b> {p.location}</div>}
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
       </Modal>
       {/* Delete Confirmation Modal */}
       <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Confirm Delete">
         <div>Are you sure you want to delete this attendance record? This action cannot be undone.</div>
         <div className="flex justify-end gap-2 mt-6">
-          <Button type="button" variant="secondary" onClick={() => setShowDeleteConfirm(false)} disabled={actionLoading}>Cancel</Button>
-          <Button type="button" variant="danger" onClick={confirmDelete} loading={actionLoading}>Delete</Button>
+          <Button type="button" variant="secondary" onClick={() => setShowDeleteConfirm(false)} disabled={punchLogLoadingId !== null}>Cancel</Button>
+          <Button type="button" variant="danger" onClick={confirmDelete} loading={punchLogLoadingId !== null}>Delete</Button>
         </div>
       </Modal>
       {/* Pagination */}
