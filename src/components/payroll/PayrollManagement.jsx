@@ -4,7 +4,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';
 import DeleteConfirmationModal from '../ui/DeleteConfirmationModal';
-import { FaMoneyCheckAlt, FaUserCheck, FaChartBar, FaFileInvoiceDollar, FaPlus } from 'react-icons/fa';
+import { FaMoneyCheckAlt, FaUserCheck, FaChartBar, FaFileInvoiceDollar, FaPlus, FaFileCsv, FaFileExcel, FaFilePdf, FaSearch } from 'react-icons/fa';
 import PayrollList from './PayrollList';
 import PayrollModal from './PayrollModal';
 import AttendanceList from './AttendanceList';
@@ -18,6 +18,8 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 import DatePicker from '../ui/DatePicker';
 import AsyncSelect from 'react-select/async';
 import staffService from '../../api/staff/staffService';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const TAB_DASHBOARD = 'dashboard';
 const TAB_PAYROLL = 'payroll';
@@ -32,7 +34,9 @@ const tabList = [
 ];
 
 const PayrollManagement = () => {
-  const [activeTab, setActiveTab] = useState(TAB_DASHBOARD);
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('payrollActiveTab') || TAB_DASHBOARD;
+  });
   const [payrolls, setPayrolls] = useState([]);
   const [payrollModalOpen, setPayrollModalOpen] = useState(false);
   const [editingPayroll, setEditingPayroll] = useState(null);
@@ -62,6 +66,11 @@ const PayrollManagement = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [reportStatus, setReportStatus] = useState('');
   const [dateFilterType, setDateFilterType] = useState('month'); // 'day', 'week', 'month', 'custom'
+
+  // Persist active tab to localStorage
+  useEffect(() => {
+    localStorage.setItem('payrollActiveTab', activeTab);
+  }, [activeTab]);
 
   // Helper to set date range for quick filters
   const setQuickDateRange = (type) => {
@@ -258,20 +267,27 @@ const PayrollManagement = () => {
     return true;
   });
   // Export handlers (CSV only for now)
-  const handleExportCSV = () => {
-    let csv = 'Type,Employee,Date,Status,Amount/In,Out\n';
-    filteredPayrolls.forEach(p => {
-      csv += `Payroll,${p.employeeName || p.employeeId},${p.date || ''},${p.status || ''},${p.amount || ''},,\n`;
-    });
-    filteredAttendance.forEach(a => {
+  // Update handleExportCSV to use proper CSV formatting
+  function handleExportCSV() {
+    const headers = ['Type', 'Employee', 'Date', 'Status', 'Amount/In', 'Out'];
+    let csv = headers.join(',') + '\n';
+    filteredPayrolls.concat(filteredAttendance).forEach(row => {
       let inTime = '', outTime = '';
-      if (a.punches && a.punches.length > 0) {
-        const punchesIn = a.punches.filter(p => p.type === 'IN');
-        const punchesOut = a.punches.filter(p => p.type === 'OUT');
+      if (row.punches && row.punches.length > 0) {
+        const punchesIn = row.punches.filter(p => p.type === 'IN');
+        const punchesOut = row.punches.filter(p => p.type === 'OUT');
         if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
         if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
       }
-      csv += `Attendance,${a.employeeName || a.employeeId},${a.date || ''},${a.status || ''},${inTime},${outTime}\n`;
+      const values = [
+        row.amount !== undefined ? 'Payroll' : 'Attendance',
+        (row.employeeName || row.employeeId || '').replace(/,/g, ' '),
+        (row.date || '').replace(/,/g, ' '),
+        (row.status || '').replace(/,/g, ' '),
+        row.amount !== undefined ? `₹${row.amount || 0}` : inTime,
+        row.amount !== undefined ? '-' : outTime
+      ];
+      csv += values.join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -280,7 +296,62 @@ const PayrollManagement = () => {
     a.download = `payroll_attendance_report.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }
+  // Update handleExportExcel to use CSV format but with .xls extension
+  function handleExportExcel() {
+    const headers = ['Type', 'Employee', 'Date', 'Status', 'Amount/In', 'Out'];
+    let csv = headers.join(',') + '\n';
+    filteredPayrolls.concat(filteredAttendance).forEach(row => {
+      let inTime = '', outTime = '';
+      if (row.punches && row.punches.length > 0) {
+        const punchesIn = row.punches.filter(p => p.type === 'IN');
+        const punchesOut = row.punches.filter(p => p.type === 'OUT');
+        if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
+        if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
+      }
+      const values = [
+        row.amount !== undefined ? 'Payroll' : 'Attendance',
+        (row.employeeName || row.employeeId || '').replace(/,/g, ' '),
+        (row.date || '').replace(/,/g, ' '),
+        (row.status || '').replace(/,/g, ' '),
+        row.amount !== undefined ? `₹${row.amount || 0}` : inTime,
+        row.amount !== undefined ? '-' : outTime
+      ];
+      csv += values.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_attendance_report.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  // Update handleExportPDF to use print as fallback, or clarify
+  function handleExportPDF(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const doc = new jsPDF();
+    const headers = [['Type', 'Employee', 'Date', 'Status', 'Amount/In', 'Out']];
+    const rows = filteredPayrolls.concat(filteredAttendance).map(row => {
+      let inTime = '', outTime = '';
+      if (row.punches && row.punches.length > 0) {
+        const punchesIn = row.punches.filter(p => p.type === 'IN');
+        const punchesOut = row.punches.filter(p => p.type === 'OUT');
+        if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
+        if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
+      }
+      return [
+        row.amount !== undefined ? 'Payroll' : 'Attendance',
+        row.employeeName || row.employeeId || '',
+        row.date || '',
+        row.status || '',
+        row.amount !== undefined ? `₹${row.amount || 0}` : inTime,
+        row.amount !== undefined ? '-' : outTime
+      ];
+    });
+    doc.autoTable({ head: headers, body: rows });
+    doc.save('payroll_attendance_report.pdf');
+  }
 
   // Render dashboard analytics
   const renderDashboard = () => {
@@ -377,7 +448,7 @@ const PayrollManagement = () => {
       <>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className="bg-blue-50 border-blue-200 min-h-[120px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-blue-100 p-3 mr-4">
                 <FaMoneyCheckAlt className="text-blue-600 text-xl" />
@@ -388,7 +459,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-green-50 border-green-200">
+          <Card className="bg-green-50 border-green-200 min-h-[120px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-green-100 p-3 mr-4">
                 <FaUserCheck className="text-green-600 text-xl" />
@@ -399,7 +470,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-purple-50 border-purple-200">
+          <Card className="bg-purple-50 border-purple-200 min-h-[120px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-purple-100 p-3 mr-4">
                 <FaUserCheck className="text-purple-600 text-xl" />
@@ -446,27 +517,27 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-pink-50 border-pink-200">
-            <div className="p-4 flex flex-col">
-              <div className="flex items-center mb-2">
-                <div className="rounded-full bg-pink-100 p-3 mr-4">
-                  <FaUserCheck className="text-pink-600 text-xl" />
+          <Card className="bg-pink-50 border-pink-200 min-h-[120px] flex-1 flex flex-col justify-center">
+            <div className="p-4 h-full flex flex-col justify-start">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center">
+                  <div className="rounded-full bg-pink-100 p-3 mr-3">
+                    <FaUserCheck className="text-pink-600 text-xl" />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-800">Most Punctual </span>
+                  <span className="font-bold text-pink-600 ml-1">{attendanceAnalytics.mostPunctual?._id || '-'}</span>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Most Punctual</h3>
-                  <p className="text-lg font-bold text-pink-600">{attendanceAnalytics.mostPunctual?._id || '-'}</p>
-                  <span className="text-xs text-gray-500">Punches: {attendanceAnalytics.mostPunctual?.count || 0}</span>
-                </div>
+                <span className="text-xs text-gray-500">{attendanceAnalytics.mostPunctual?.count || 0} punches</span>
               </div>
-              <div className="flex items-center">
-                <div className="rounded-full bg-gray-100 p-3 mr-4">
-                  <FaUserCheck className="text-gray-600 text-xl" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="rounded-full bg-gray-100 p-3 mr-3">
+                    <FaUserCheck className="text-gray-600 text-xl" />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-800">Least Punctual </span>
+                  <span className="font-bold text-gray-600 ml-1">{attendanceAnalytics.leastPunctual?._id || '-'}</span>
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-800">Least Punctual</h3>
-                  <p className="text-sm font-bold text-gray-600">{attendanceAnalytics.leastPunctual?._id || '-'}</p>
-                  <span className="text-xs text-gray-500">Punches: {attendanceAnalytics.leastPunctual?.count || 0}</span>
-                </div>
+                <span className="text-xs text-gray-500">{attendanceAnalytics.leastPunctual?.count || 0} punches</span>
               </div>
             </div>
           </Card>
@@ -613,16 +684,44 @@ const PayrollManagement = () => {
       )}
       {activeTab === TAB_REPORTS && (
         <Card title="Payroll & Attendance Reports">
-          {/* Filters */}
+          {/* Advanced Filters */}
           <div className="mb-4 flex flex-wrap gap-4 items-center">
-            {/* Quick Date Filters */}
-            <div className="flex gap-2">
+            {/* Employee Filter */}
+            <AsyncSelect
+              cacheOptions
+              defaultOptions
+              loadOptions={async (inputValue) => {
+                const res = await staffService.getStaff({ search: inputValue, status: 'Active' });
+                return (res.data || []).map(staff => ({ value: staff._id, label: staff.name }));
+              }}
+              onChange={setSelectedEmployee}
+              value={selectedEmployee}
+              placeholder="Select Employee"
+              className="w-64"
+              isClearable
+              menuPortalTarget={document.body}
+              styles={{ menuPortal: base => ({ ...base, zIndex: 2000 }) }}
+            />
+            {/* Status Filter */}
+            <select
+              value={reportStatus}
+              onChange={e => setReportStatus(e.target.value)}
+              className="border rounded px-2 py-1"
+            >
+              <option value="">All Statuses</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+              <option value="absent">Absent</option>
+              <option value="present">Present</option>
+              <option value="on leave">On Leave</option>
+            </select>
+            {/* Date Range Filter */}
+            <div className="flex gap-2 items-center">
               <Button variant={dateFilterType === 'day' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('day')}>Today</Button>
               <Button variant={dateFilterType === 'week' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('week')}>This Week</Button>
               <Button variant={dateFilterType === 'month' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('month')}>This Month</Button>
               <Button variant={dateFilterType === 'custom' ? 'primary' : 'outline'} size="sm" onClick={() => setDateFilterType('custom')}>Custom</Button>
             </div>
-            {/* DatePicker only for custom */}
             {dateFilterType === 'custom' && (
               <DatePicker
                 range
@@ -634,45 +733,62 @@ const PayrollManagement = () => {
                 className="border rounded px-2 py-1"
               />
             )}
-            <AsyncSelect
-              cacheOptions
-              defaultOptions
-              loadOptions={loadEmployeeOptions}
-              onChange={setSelectedEmployee}
-              placeholder="Select Employee"
-              className="w-64"
-            />
-            <select
-              value={reportStatus}
-              onChange={e => setReportStatus(e.target.value)}
-              className="border rounded px-2 py-1"
-            >
-              <option value="">All Statuses</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-              <option value="absent">Absent</option>
-              <option value="present">Present</option>
-            </select>
             <Button onClick={handleExportCSV} variant="info">Export CSV</Button>
           </div>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <Card>
+          {/* Summary KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <Card className="bg-blue-50 border-blue-200 min-h-[120px] flex-1 flex flex-col justify-center">
               <div className="p-4">
-                <h3 className="text-lg font-semibold">Payroll Records</h3>
-                <p className="text-2xl font-bold">{filteredPayrolls.length}</p>
+                <div className="text-sm font-medium text-gray-500">Total Payroll Amount</div>
+                <div className="mt-1 text-2xl font-bold text-blue-600">₹{filteredPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}</div>
               </div>
             </Card>
-            <Card>
+            <Card className="bg-green-50 border-green-200 min-h-[120px] flex-1 flex flex-col justify-center">
               <div className="p-4">
-                <h3 className="text-lg font-semibold">Attendance Records</h3>
-                <p className="text-2xl font-bold">{filteredAttendance.length}</p>
+                <div className="text-sm font-medium text-gray-500">Total Attendance</div>
+                <div className="mt-1 text-2xl font-bold text-green-600">{filteredAttendance.length}</div>
               </div>
             </Card>
-            <Card>
+            <Card className="bg-yellow-50 border-yellow-200 min-h-[120px] flex-1 flex flex-col justify-center">
               <div className="p-4">
-                <h3 className="text-lg font-semibold">Total Payroll Amount</h3>
-                <p className="text-2xl font-bold">₹{filteredPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}</p>
+                <div className="text-sm font-medium text-gray-500">Total Overtime</div>
+                <div className="mt-1 text-2xl font-bold text-yellow-600">{filteredAttendance.reduce((sum, a) => sum + (a.overtimeHours || 0), 0)}</div>
+              </div>
+            </Card>
+            <Card className="bg-red-50 border-red-200 min-h-[120px] flex-1 flex flex-col justify-center">
+              <div className="p-4">
+                <div className="text-sm font-medium text-gray-500">Total Deductions</div>
+                <div className="mt-1 text-2xl font-bold text-red-600">₹{filteredPayrolls.reduce((sum, p) => sum + (p.deductions || 0), 0).toLocaleString()}</div>
+              </div>
+            </Card>
+            <Card className="bg-purple-50 border-purple-200 min-h-[120px] flex-1 flex flex-col justify-center">
+              <div className="p-4">
+                <div className="text-sm font-medium text-gray-500">Total Leaves</div>
+                <div className="mt-1 text-2xl font-bold text-purple-600">{filteredAttendance.filter(a => a.status === 'On Leave').length}</div>
+              </div>
+            </Card>
+            <Card className="bg-pink-50 border-pink-200 min-h-[120px] flex-1 flex flex-col justify-center">
+              <div className="p-4 h-full flex flex-col justify-start">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center">
+                    <div className="rounded-full bg-pink-100 p-3 mr-3">
+                      <FaUserCheck className="text-pink-600 text-xl" />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-800">Most Punctual </span>
+                    <span className="font-bold text-pink-600 ml-1">{attendanceAnalytics.mostPunctual?._id || '-'}</span>
+                  </div>
+                  <span className="text-xs text-gray-500">{attendanceAnalytics.mostPunctual?.count || 0} punches</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="rounded-full bg-gray-100 p-3 mr-3">
+                      <FaUserCheck className="text-gray-600 text-xl" />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-800">Least Punctual </span>
+                    <span className="font-bold text-gray-600 ml-1">{attendanceAnalytics.leastPunctual?._id || '-'}</span>
+                  </div>
+                  <span className="text-xs text-gray-500">{attendanceAnalytics.leastPunctual?.count || 0} punches</span>
+                </div>
               </div>
             </Card>
           </div>
@@ -726,6 +842,22 @@ const PayrollManagement = () => {
           {/* Consolidated Table */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold mb-2">Payroll & Attendance Records</h3>
+            {/* Table Controls */}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="relative flex-grow max-w-xs">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FaSearch className="text-gray-400" /></span>
+                <input
+                  type="text"
+                  placeholder="Search by employee, status, date..."
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+              <Button onClick={handleExportCSV} variant="info" size="sm" className="flex items-center"><FaFileCsv className="mr-1" />Export CSV</Button>
+              <Button onClick={() => handleExportExcel()} variant="success" size="sm" className="flex items-center"><FaFileExcel className="mr-1" />Export Excel</Button>
+              <Button onClick={() => handleExportPDF()} variant="danger" size="sm" className="flex items-center"><FaFilePdf className="mr-1" />Export PDF</Button>
+            </div>
             <div className="overflow-x-auto rounded-lg shadow border border-gray-200 bg-white">
               <table className="min-w-full table-fixed text-sm">
                 <thead className="bg-gray-50">
@@ -739,36 +871,50 @@ const PayrollManagement = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPayrolls.map(p => (
-                    <tr key={`payroll-${p._id}`}> 
-                      <td className="px-4 py-2">Payroll</td>
-                      <td className="px-4 py-2">{p.employeeName || p.employeeId}</td>
-                      <td className="px-4 py-2">{p.date || '-'}</td>
-                      <td className="px-4 py-2">{p.status || '-'}</td>
-                      <td className="px-4 py-2">₹{p.amount || 0}</td>
-                      <td className="px-4 py-2">-</td>
-                    </tr>
-                  ))}
-                  {filteredAttendance.map(a => {
-                    let inTime = '', outTime = '';
-                    if (a.punches && a.punches.length > 0) {
-                      const punchesIn = a.punches.filter(p => p.type === 'IN');
-                      const punchesOut = a.punches.filter(p => p.type === 'OUT');
-                      if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
-                      if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
+                  {filteredPayrolls.concat(filteredAttendance).filter(row => {
+                    // Global search only
+                    const q = search.toLowerCase();
+                    if (q && !(
+                      (row.employeeName || row.employeeId || '').toLowerCase().includes(q) ||
+                      (row.status || '').toLowerCase().includes(q) ||
+                      (row.date || '').toLowerCase().includes(q)
+                    )) return false;
+                    return true;
+                  }).map((row, idx) => {
+                    if (row.amount !== undefined) {
+                      // Payroll row
+                      return (
+                        <tr key={`payroll-${row._id || idx}`}> 
+                          <td className="px-4 py-2">Payroll</td>
+                          <td className="px-4 py-2">{row.employeeName || row.employeeId}</td>
+                          <td className="px-4 py-2">{row.date || '-'}</td>
+                          <td className="px-4 py-2">{row.status || '-'}</td>
+                          <td className="px-4 py-2">₹{row.amount || 0}</td>
+                          <td className="px-4 py-2">-</td>
+                        </tr>
+                      );
+                    } else {
+                      // Attendance row
+                      let inTime = '', outTime = '';
+                      if (row.punches && row.punches.length > 0) {
+                        const punchesIn = row.punches.filter(p => p.type === 'IN');
+                        const punchesOut = row.punches.filter(p => p.type === 'OUT');
+                        if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
+                        if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
+                      }
+                      return (
+                        <tr key={`attendance-${row._id || idx}`}> 
+                          <td className="px-4 py-2">Attendance</td>
+                          <td className="px-4 py-2">{row.employeeName || row.employeeId}</td>
+                          <td className="px-4 py-2">{row.date || '-'}</td>
+                          <td className="px-4 py-2">{row.status || '-'}</td>
+                          <td className="px-4 py-2">{inTime}</td>
+                          <td className="px-4 py-2">{outTime}</td>
+                        </tr>
+                      );
                     }
-                    return (
-                      <tr key={`attendance-${a._id}`}> 
-                        <td className="px-4 py-2">Attendance</td>
-                        <td className="px-4 py-2">{a.employeeName || a.employeeId}</td>
-                        <td className="px-4 py-2">{a.date || '-'}</td>
-                        <td className="px-4 py-2">{a.status || '-'}</td>
-                        <td className="px-4 py-2">{inTime}</td>
-                        <td className="px-4 py-2">{outTime}</td>
-                      </tr>
-                    );
                   })}
-                  {filteredPayrolls.length === 0 && filteredAttendance.length === 0 && (
+                  {(filteredPayrolls.length === 0 && filteredAttendance.length === 0) && (
                     <tr><td colSpan={6} className="text-center text-gray-400 py-6">No records found for selected filters.</td></tr>
                   )}
                 </tbody>
