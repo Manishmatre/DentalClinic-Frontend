@@ -49,6 +49,9 @@ const DentalEHRChart = () => <div>Dental EHR Chart (Coming Soon)</div>;
 const PrescriptionFormPage = lazy(() => import('../pages/prescriptions/PrescriptionFormPage'));
 const PrescriptionDetailPage = lazy(() => import('../pages/prescriptions/PrescriptionDetailPage'));
 
+const PayrollManagementPage = lazy(() => import('../pages/admin/PayrollManagement'));
+const AttendanceManagement = lazy(() => import('../pages/admin/AttendanceManagement'));
+
 const adminRoutes = {
   path: '/admin',
   element: AdminLayout,
@@ -210,6 +213,15 @@ const adminRoutes = {
     {
       path: 'clinic-activation',
       element: ClinicActivation
+    },
+    // Payroll & Attendance Management
+    {
+      path: 'payroll-management',
+      element: PayrollManagementPage
+    },
+    {
+      path: 'attendance-management',
+      element: AttendanceManagement
     },
     {
       path: '/admin/EditInventoryItem/:id',

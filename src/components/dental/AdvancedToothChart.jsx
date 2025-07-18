@@ -252,6 +252,38 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
         patientApprovalStatus: 'pending',
       };
       await dentalService.createTreatment(treatmentData);
+      // --- NEW: Update tooth condition in chart based on treatment type ---
+      let newCondition = null;
+      if (procedure) {
+        // Map procedure to condition value
+        const proc = procedure.toLowerCase();
+        if (proc.includes('root')) newCondition = 'root-canal';
+        else if (proc.includes('filling')) newCondition = 'filled';
+        else if (proc.includes('crown')) newCondition = 'crown';
+        else if (proc.includes('extraction')) newCondition = 'extraction-needed';
+        else if (proc.includes('implant')) newCondition = 'implant';
+        else if (proc.includes('bridge')) newCondition = 'bridge';
+        else if (proc.includes('veneer')) newCondition = 'veneer';
+        else if (proc.includes('caries')) newCondition = 'caries';
+        // Add more mappings as needed
+      }
+      if (newCondition) {
+        await dentalService.updateToothRecord(
+          chartData._id,
+          selectedTooth,
+          {
+            condition: newCondition,
+            notes: treatmentNotes,
+            doctor: selectedDoctor,
+            cost: parseFloat(cost) || 0,
+            discountPercent: parseFloat(discountPercent) || 0,
+            discountAmount: parseFloat(discountAmount) || 0,
+            finalCost: parseFloat(finalCost) || 0,
+            status: selectedStatus,
+            quadrant: getQuadrant(selectedTooth),
+          }
+        );
+      }
       toast.success('Treatment added successfully');
       setShowTreatmentModal(false);
       setProcedure('');
@@ -262,8 +294,9 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
       setDiscountAmount('');
       setFinalCost('');
       setSelectedStatus('completed');
-      // Refresh treatments
+      // Refresh treatments and chart
       fetchTreatments();
+      fetchDentalChart();
     } catch (error) {
       console.error('Error adding treatment:', error);
       toast.error('Failed to add treatment');
@@ -286,59 +319,39 @@ const AdvancedToothChart = ({ patientId, readOnly = false }) => {
   const fetchDentalChart = async () => {
     try {
       setLoading(true);
-      // Try to get data from API
       try {
         const { chart, teeth } = await dentalService.getPatientDentalChart(patientId);
         setChartData(chart);
-        // Initialize teeth data
-        const teethObj = {};
+        // Map backend tooth records (array) to object keyed by toothNumber
+        let teethObj = {};
+        if (Array.isArray(teeth)) {
+          teeth.forEach(tr => {
+            teethObj[tr.toothNumber] = tr;
+          });
+        } else if (teeth && typeof teeth === 'object') {
+          teethObj = { ...teeth };
+        }
+        // Always fill 1-32 as healthy if missing
         for (let i = 1; i <= 32; i++) {
-          teethObj[i] = teeth && teeth[i]
-            ? teeth[i]
-            : { condition: 'healthy', surfaces: [], notes: '', status: 'completed' };
+          if (!teethObj[i]) {
+            teethObj[i] = { condition: 'healthy', surfaces: [], notes: '', status: 'completed' };
+          }
         }
         setTeethData(teethObj);
+        console.log('teethData after fetch (mapped):', teethObj); // DEBUG: log loaded teeth data
         // Also fetch treatment history
         const treatmentData = await dentalService.getPatientTreatments(patientId);
         setTreatmentHistory(treatmentData || []);
       } catch (apiError) {
-        console.log('API not available, using mock data');
-        // Initialize with mock data for demo
+        // If API fails, just show all healthy teeth (no demo/mock data)
         const teethObj = {};
         for (let i = 1; i <= 32; i++) {
           teethObj[i] = { condition: 'healthy', surfaces: [], notes: '', status: 'completed' };
         }
-        // Add some demo data
-        teethObj[3] = { condition: 'filled', surfaces: ['occlusal'], notes: 'Composite filling' };
-        teethObj[14] = { condition: 'crown', surfaces: [], notes: 'Full ceramic crown' };
-        teethObj[19] = { condition: 'caries', surfaces: ['mesial', 'occlusal'], notes: 'Needs treatment' };
-        teethObj[30] = { condition: 'root-canal', surfaces: [], notes: 'Root canal treatment completed 2024-04-15' };
         setTeethData(teethObj);
-        setChartData({ _id: 'mock-chart-id', patientId });
-        // Mock treatment history
-        setTreatmentHistory([
-          { 
-            _id: 'treatment-1', 
-            toothNumber: 3, 
-            procedure: 'Composite Filling', 
-            date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-            notes: 'Composite filling on occlusal surface'
-          },
-          { 
-            _id: 'treatment-2', 
-            toothNumber: 14, 
-            procedure: 'Crown Placement', 
-            date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-            notes: 'Full ceramic crown placed'
-          },
-          { 
-            _id: 'treatment-3', 
-            toothNumber: 30, 
-            procedure: 'Root Canal Treatment', 
-            date: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
-            notes: 'Root canal treatment completed'
-          }
-        ]);
+        console.log('teethData after API fail:', teethObj); // DEBUG: log fallback teeth data
+        setChartData({ patientId });
+        setTreatmentHistory([]);
       }
       setLoading(false);
     } catch (error) {

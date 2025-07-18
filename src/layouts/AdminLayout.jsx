@@ -417,6 +417,8 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
       title: 'Finance & Inventory',
       items: [
         { path: '/admin/billing-management', label: 'Billing & Payments', icon: icons.billing },
+        { path: '/admin/payroll-management', label: 'Payroll Management', icon: icons.financial },
+        { path: '/admin/attendance-management', label: 'Attendance Management', icon: icons.calendar },
         { path: '/admin/prescriptions', label: 'Prescription Management', icon: icons.prescription },
         { path: '/admin/medicines', label: 'Medicines', icon: (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

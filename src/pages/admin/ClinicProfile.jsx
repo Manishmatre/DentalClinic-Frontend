@@ -65,43 +65,38 @@ const ClinicProfile = () => {
   // Function to fetch real clinic data from the database
   const fetchClinicData = async () => {
     if (!user || !user.clinicId) {
-      console.log('No user or clinicId available:', user);
       setError('No clinic associated with this user. Please contact support or register your clinic.');
       setIsLoading(false);
-      // Do NOT redirect or navigate away
       return;
     }
     try {
       setIsLoading(true);
       setError(null);
-      // Always clear localStorage cache before fetching
-      localStorage.removeItem('clinicData');
-      console.log('Fetching real clinic data for clinicId:', user.clinicId);
-      // Fetch the clinic data from backend
+      // Always fetch the latest clinic data from backend
       const clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
+      // Support both {data: ...} and direct object
       const clinicData = clinicDataResponse.data || clinicDataResponse;
-      console.log('Fetched clinic data from API:', clinicData);
-        if (!clinicData) {
-          throw new Error('No clinic data received from server');
-        }
-        setClinicData(clinicData);
-        setFormData({
-          name: clinicData?.name || '',
-          email: clinicData?.email || '',
-          contact: clinicData?.contact || '',
-          clinicContact: clinicData?.clinicContact || '',
-          doctorName: clinicData?.doctorName || '',
-          address1: clinicData?.address1 || '',
-          address2: clinicData?.address2 || '',
-          city: clinicData?.city || '',
-          state: clinicData?.state || '',
-          country: clinicData?.country || '',
-          zipcode: clinicData?.zipcode || '',
-          about: clinicData?.about || '',
-          logo: clinicData?.logo || ''
-        });
+      if (!clinicData) {
+        throw new Error('No clinic data received from server');
+      }
+      setClinicData(clinicData);
+      // Only use real backend data for form initialization
+      setFormData({
+        name: clinicData.name || '',
+        email: clinicData.email || '',
+        contact: clinicData.contact || '',
+        clinicContact: clinicData.clinicContact || '',
+        doctorName: clinicData.doctorName || '',
+        address1: clinicData.address1 || '',
+        address2: clinicData.address2 || '',
+        city: clinicData.city || '',
+        state: clinicData.state || '',
+        country: clinicData.country || '',
+        zipcode: clinicData.zipcode || '',
+        about: clinicData.about || '',
+        logo: clinicData.logo || ''
+      });
     } catch (err) {
-      console.error('Error in fetchClinicData:', err);
       setError('Failed to load clinic data. Please try refreshing the page.');
     } finally {
       setIsLoading(false);
@@ -140,14 +135,11 @@ const ClinicProfile = () => {
       console.log('Submitting clinic data update to backend:', dataToSubmit);
 
       // Update clinic details via API
-      const response = await clinicService.updateClinicSettings(user.clinicId, dataToSubmit);
+      await clinicService.updateClinicSettings(user.clinicId, dataToSubmit);
       console.log('Update response from backend:', response);
 
-      // Clear cached clinic data to force refetch
-      localStorage.removeItem('clinicData');
-      
-      // Refresh auth context to get updated clinic data
-      await refreshAuth();
+      // Always refetch after update
+      await fetchClinicData();
       
       // Show success message
       setSuccess('Clinic profile updated successfully');
@@ -156,7 +148,7 @@ const ClinicProfile = () => {
       setIsEditing(false);
       
       // Refresh clinic data to show the latest information from the database
-      await fetchClinicData();
+      // await fetchClinicData(); // This line is now redundant as fetchClinicData is called inside handleSubmit
     } catch (err) {
       console.error('Error updating clinic profile:', err);
       setError(err.response?.data?.message || 'Failed to update clinic profile. Please ensure the backend server is running.');

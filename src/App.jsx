@@ -50,6 +50,7 @@ import DentalBilling from './pages/admin/DentalBilling';
 import DentalImaging from './pages/admin/DentalImaging';
 import AdminChairManagementPage from './pages/admin/ChairManagement';
 import MedicineManagement from './pages/admin/MedicineManagement';
+import PayrollManagementPage from './pages/admin/PayrollManagement';
 
 // Routes
 import BillingRoutes from './routes/BillingRoutes';
@@ -181,6 +182,7 @@ function App() {
           <Route path="/admin/profile" element={<AdminProfile />} />
           <Route path="/admin/prescriptions/*" element={<PrescriptionRoutes />} />
           <Route path="/admin/medicines" element={<MedicineManagement />} />
+          <Route path="/admin/payroll-management" element={<PayrollManagementPage />} />
         </Route>
       </Route>
 

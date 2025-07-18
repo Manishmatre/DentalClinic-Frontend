@@ -189,32 +189,45 @@ export const AuthProvider = ({ children }) => {
         const clinicId = typeof userData.clinicId === 'object' ? 
           (userData.clinicId._id || userData.clinicId.id || '') : userData.clinicId;
         
+        // Defensive check: clinicId must be a valid 24-char string (MongoDB ObjectId)
+        if (!clinicId || typeof clinicId !== 'string' || clinicId.length !== 24) {
+          setClinic(null);
+          localStorage.removeItem('clinicData');
+          if (typeof window !== 'undefined') {
+            window.alert('Your account is not associated with a valid clinic. Please contact support.');
+            window.location.href = '/no-clinic';
+          }
+          return null;
+        }
         // Only proceed if we have a valid clinic ID
         if (clinicId) {
-          // Fetch clinic data with silent error handling
-          const clinicResponse = await silentApiCall(
-            () => api.get(`/clinics/${clinicId}`),
-            'Clinic data fetch failed'
-          );
-
-          if (clinicResponse && clinicResponse.data) {
-            const clinicData = clinicResponse.data;
-            console.log('Clinic data fetched during refresh:', clinicData);
-
-            // Update localStorage with fresh clinic data
-            localStorage.setItem('clinicData', JSON.stringify(clinicData));
-
-            // Update state
-            setClinic(clinicData);
-          } else {
-            // Try to use stored clinic data
-            const storedClinicData = JSON.parse(localStorage.getItem('clinicData') || 'null');
-            if (storedClinicData) {
-              console.log('Using stored clinic data during refresh:', storedClinicData);
-              setClinic(storedClinicData);
-        } else {
-              console.warn('No clinic data available during refresh');
+          // Always fetch clinic data from the database
+          try {
+            const clinicResponse = await api.get(`/clinics/${clinicId}`);
+            if (clinicResponse && clinicResponse.data) {
+              const clinicData = clinicResponse.data;
+              console.log('Clinic data fetched during refresh:', clinicData);
+              localStorage.setItem('clinicData', JSON.stringify(clinicData));
+              setClinic(clinicData);
+            } else {
+              // If no clinic data, clear context and redirect
+              setClinic(null);
+              localStorage.removeItem('clinicData');
+              if (typeof window !== 'undefined') {
+                window.alert('Your account is no longer associated with a clinic. Please contact support.');
+                window.location.href = '/no-clinic';
+              }
+              return null;
             }
+          } catch (err) {
+            // On error, clear context and redirect
+            setClinic(null);
+            localStorage.removeItem('clinicData');
+            if (typeof window !== 'undefined') {
+              window.alert('Failed to fetch clinic information. Please contact support or try again later.');
+              window.location.href = '/no-clinic';
+            }
+            return null;
           }
         }
       }

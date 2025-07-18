@@ -775,33 +775,33 @@ const PatientDetails = () => {
           </div>
           {/* Billing Summary Card */}
           <div className="w-full md:w-80 mt-6 md:mt-0 md:ml-8">
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg shadow p-4 flex flex-col items-center">
-              <div className="text-lg font-semibold text-gray-700 mb-2 flex items-center">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg shadow p-2 flex flex-col items-center min-h-0">
+              <div className="text-base font-semibold text-gray-700 mb-1 flex items-center">
                 <FaFileInvoiceDollar className="mr-2 text-indigo-500" /> Billing Summary
               </div>
-              <div className="text-base text-gray-800 mb-1">
+              <div className="text-sm text-gray-800 mb-0.5">
                 <span className="font-semibold">All Bills:</span>
               </div>
-              <div className="text-sm text-gray-800 mb-1">
+              <div className="text-xs text-gray-800 mb-0.5">
                 Treatment Cost (from Treatments): <span className="font-bold text-blue-700">INR {totalTreatmentCostFromTreatments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="text-sm text-gray-800 mb-1">
+              <div className="text-xs text-gray-800 mb-0.5">
                 Paid: <span className="font-bold text-green-700">INR {totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="text-sm text-gray-800 mb-3">
+              <div className="text-xs text-gray-800 mb-2">
                 Balance: <span className="font-bold text-red-700">INR {totalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="w-full border-t border-blue-200 my-2"></div>
-              <div className="text-base text-gray-800 mb-1">
+              <div className="w-full border-t border-blue-200 my-1"></div>
+              <div className="text-sm text-gray-800 mb-0.5">
                 <span className="font-semibold">Dental Bills:</span>
               </div>
-              <div className="text-sm text-gray-800 mb-1">
+              <div className="text-xs text-gray-800 mb-0.5">
                 Treatment Cost: <span className="font-bold text-blue-700">INR {dentalTreatmentCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="text-sm text-gray-800 mb-1">
+              <div className="text-xs text-gray-800 mb-0.5">
                 Paid: <span className="font-bold text-green-700">INR {dentalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="text-sm text-gray-800">
+              <div className="text-xs text-gray-800">
                 Balance: <span className="font-bold text-red-700">INR {dentalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
