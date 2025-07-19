@@ -1167,7 +1167,7 @@ const PatientDetails = () => {
           {activeTab === 'billing' && (
             <div>
               <Card className="mb-6">
-                <DentalBilling bills={billingRecords} readOnly patientId={id} />
+                <DentalBilling bills={allBills} readOnly patientId={id} />
               </Card>
             </div>
           )}
