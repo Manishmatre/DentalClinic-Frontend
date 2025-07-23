@@ -54,7 +54,8 @@ const DentalBillingAdmin = () => {
         setLoading(false);
       }
     };
-    fetchAllClinicDentalBilling();
+    // Call the correct function
+    fetchAllDentalBills();
   }, []);
 
   // Analytics

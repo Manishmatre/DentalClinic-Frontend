@@ -19,9 +19,21 @@ const apiCall = async (apiFunction, errorMessage = 'API call failed') => {
 const billService = {
   // Get all bills with optional filtering
   async getBills(params = {}) {
+    // Always use clinicId from userData
+    let clinicId;
+    const userData = localStorage.getItem('userData');
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData);
+        if (parsed && parsed.clinicId) {
+          clinicId = typeof parsed.clinicId === 'object' ? parsed.clinicId._id || parsed.clinicId.id : parsed.clinicId;
+        }
+      } catch {}
+    }
+    const finalParams = { ...params, clinicId };
     return apiCall(
       async () => {
-        const response = await client.get('/bills', { params });
+        const response = await client.get('/bills', { params: finalParams });
         return response.data;
       },
       'Failed to fetch bills'
@@ -305,6 +317,29 @@ const billService = {
     };
     
     return fileTypeMap[fileType] || { icon: 'file', color: 'gray.500' };
+  },
+
+  // Get all payments with optional filtering
+  async getPayments(params = {}) {
+    // Always use clinicId from userData if available
+    let clinicId;
+    const userData = localStorage.getItem('userData');
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData);
+        if (parsed && parsed.clinicId) {
+          clinicId = typeof parsed.clinicId === 'object' ? parsed.clinicId._id || parsed.clinicId.id : parsed.clinicId;
+        }
+      } catch {}
+    }
+    const finalParams = { ...params, clinicId };
+    return apiCall(
+      async () => {
+        const response = await client.get('/payments', { params: finalParams });
+        return response.data;
+      },
+      'Failed to fetch payments'
+    );
   }
 };
 

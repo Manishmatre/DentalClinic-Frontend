@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'react-toastify';
 import appointmentService from '../../api/appointments/appointmentService';
 import staffService from '../../api/staff/staffService';
+import clinicService from '../../api/clinic/clinicService';
 import { medicalServicesData, getFlattenedServices } from '../../data/medicalServices';
 import { formatDate } from '../../utils/dateUtils';
 import AppointmentCalendar from '../../components/appointments/AppointmentCalendar';
@@ -64,6 +65,19 @@ const PatientAppointments = ({ view = 'upcoming' }) => {
             setError('Missing clinic information. Please try again or contact support.');
             setIsLoading(false);
             return;
+          } else {
+            // Fetch clinic data if missing in context/localStorage
+            try {
+              const clinicData = await clinicService.getClinicDetails(clinicId);
+              if (clinicData) {
+                localStorage.setItem('clinicData', JSON.stringify(clinicData));
+              }
+            } catch (clinicError) {
+              console.error('Error fetching clinic data:', clinicError);
+              setError('Missing clinic information. Please try again or contact support.');
+              setIsLoading(false);
+              return;
+            }
           }
         }
       }

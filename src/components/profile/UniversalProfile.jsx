@@ -152,7 +152,8 @@ const UniversalProfile = () => {
             roleSpecificData = await staffService.getStaffById(user.id);
             break;
           case 'patient':
-            roleSpecificData = await patientService.getPatientById(user.id);
+            // Fetch patient by userId to get the real patient _id and data
+            roleSpecificData = await patientService.getPatientByUserId(user.id);
             break;
           default:
             console.log(`No specific profile data handler for role: ${userRole}`);

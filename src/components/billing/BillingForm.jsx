@@ -186,9 +186,9 @@ const BillingForm = ({
           }`}
         >
           <option value="">Select Patient</option>
-          {patients.map(p => (
+          {Array.isArray(patients) ? patients.map(p => (
             <option key={p._id} value={p._id}>{p.name}</option>
-          ))}
+          )) : []}
         </select>
         {errors.patientId && <p className="mt-1 text-sm text-red-600">{errors.patientId.message}</p>}
       </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import dashboardService from '../../api/dashboard/dashboardService';
+import patientService from '../../api/patients/patientService';
 import { formatRevenueData } from '../../utils/chartUtils';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -36,16 +37,32 @@ const PatientDashboard = () => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [patientId, setPatientId] = useState(null);
+
+  // Fetch patient profile to get patientId
+  useEffect(() => {
+    const fetchPatientId = async () => {
+      if (!user?._id) return;
+      try {
+        const patientProfile = await patientService.getPatientByUserId(user._id);
+        if (patientProfile && patientProfile._id) {
+          setPatientId(patientProfile._id);
+        } else {
+          setError('Patient profile not found.');
+        }
+      } catch (err) {
+        setError('Failed to load patient profile.');
+      }
+    };
+    fetchPatientId();
+  }, [user?._id]);
 
   const fetchDashboardData = useCallback(async () => {
-    if (!user?._id) return;
-
+    if (!patientId) return;
     try {
       setIsLoading(true);
       setError(null);
-
-      // Fetch patient dashboard data using our service
-      const data = await dashboardService.getPatientDashboardData(user._id);
+      const data = await dashboardService.getPatientDashboardData(patientId);
       setDashboardData(data);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -54,11 +71,11 @@ const PatientDashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user?._id]);
+  }, [patientId]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    if (patientId) fetchDashboardData();
+  }, [fetchDashboardData, patientId]);
 
   // Prepare chart data for treatment progress
   const getTreatmentProgressChartData = () => {

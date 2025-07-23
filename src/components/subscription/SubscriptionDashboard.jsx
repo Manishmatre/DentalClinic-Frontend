@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { FaCrown, FaCalendarAlt, FaHistory, FaCreditCard, FaChartLine, FaExchangeAlt, FaRegClock, FaCheck, FaTimes } from 'react-icons/fa';
+import { FaCrown, FaCalendarAlt, FaHistory, FaCreditCard, FaChartLine, FaExchangeAlt, FaRegClock, FaCheck, FaTimes, FaFilePdf } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import subscriptionService from '../../services/subscriptionService';
 import { toast } from 'react-toastify';
 import SubscriptionPlans from './SubscriptionPlans';
 import SubscriptionCheckout from './SubscriptionCheckout';
+import { Tooltip } from '@chakra-ui/react'; // Added Tooltip import
+import { Button } from '@chakra-ui/react'; // Added Button import
 
 const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
   const [subscription, setSubscription] = useState(null);
@@ -25,36 +27,6 @@ const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
       // Get clinic ID from current user
       const clinicId = currentUser?.clinic?._id || 'mock_clinic_id';
       
-      // Check if we have mock data in localStorage (for development persistence)
-      let localSubscription = null;
-      let localHistory = null;
-      
-      try {
-        const storedSubscription = localStorage.getItem('mockSubscription');
-        const storedPayment = localStorage.getItem('mockPayment');
-        
-        if (storedSubscription) {
-          localSubscription = JSON.parse(storedSubscription);
-          console.log('Found stored subscription data:', localSubscription);
-        }
-        
-        if (storedPayment) {
-          const payment = JSON.parse(storedPayment);
-          localHistory = [{
-            _id: payment._id,
-            date: payment.paidAt,
-            amount: payment.amount,
-            description: payment.description,
-            status: payment.status,
-            paymentMethod: payment.paymentMethod,
-            invoiceNumber: payment.gatewayPaymentId,
-            reference: payment.gatewayOrderId
-          }];
-        }
-      } catch (e) {
-        console.warn('Error parsing stored mock data:', e);
-      }
-      
       // Fetch subscription data
       const subscriptionResponse = await subscriptionService.getClinicSubscription(clinicId);
       console.log('Subscription data fetched:', subscriptionResponse);
@@ -62,9 +34,6 @@ const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
       // Use API data or fallback to localStorage data if available
       if (subscriptionResponse?.data) {
         setSubscription(subscriptionResponse.data);
-      } else if (localSubscription) {
-        console.log('Using stored mock subscription data');
-        setSubscription(localSubscription);
       } else {
         console.warn('No subscription data found');
         setSubscription(null);
@@ -76,9 +45,6 @@ const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
       
       if (historyResponse?.data?.length > 0) {
         setSubscriptionHistory(historyResponse.data);
-      } else if (localHistory) {
-        console.log('Using stored mock payment history');
-        setSubscriptionHistory(localHistory);
       } else {
         console.warn('No subscription history found');
         setSubscriptionHistory([]);
@@ -421,6 +387,13 @@ const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
         setLoading(false);
       }
     }
+  };
+
+  // Add handleDownloadInvoice function
+  const handleDownloadInvoice = (invoiceId) => {
+    if (!invoiceId) return;
+    // Open the invoice PDF in a new tab (adjust endpoint as needed)
+    window.open(`/api/invoices/${invoiceId}/pdf`, '_blank');
   };
 
   if (loading) {
@@ -926,6 +899,18 @@ const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
                             {getPaymentStatusBadge(item.status)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            {item.invoiceNumber || item.reference ? (
+                              <Tooltip content="Download Invoice PDF">
+                                <Button
+                                  variant="success"
+                                  size="xs"
+                                  className="p-2"
+                                  onClick={() => handleDownloadInvoice(item.invoiceNumber || item.reference)}
+                                >
+                                  <FaFilePdf size={16} />
+                                </Button>
+                              </Tooltip>
+                            ) : null}
                             {item.invoiceUrl && (
                               <a 
                                 href={item.invoiceUrl} 
@@ -950,6 +935,51 @@ const SubscriptionDashboard = ({ initialTab, onUpgrade }) => {
           )}
         </div>
       </div>
+      
+      {/* Usage and limits summary section */}
+      {subscription && subscription.features && (
+        <div className="my-8 p-6 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-semibold mb-4">Usage & Limits</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium mb-2">Resource Usage</h4>
+              <ul className="space-y-2">
+                <li>Doctors: {typeof subscription.usage?.doctors === 'object' ? `${subscription.usage.doctors.used} / ${subscription.usage.doctors.limit}` : `${subscription.usage?.doctors || 0} / ${subscription.features.maxDoctors}`}</li>
+                <li>Patients: {typeof subscription.usage?.patients === 'object' ? `${subscription.usage.patients.used} / ${subscription.usage.patients.limit}` : `${subscription.usage?.patients || 0} / ${subscription.features.maxPatients}`}</li>
+                <li>Staff: {typeof subscription.usage?.staff === 'object' ? `${subscription.usage.staff.used} / ${subscription.usage.staff.limit}` : `${subscription.usage?.staff || 0} / ${subscription.features.maxStaff}`}</li>
+                <li>Storage: {typeof subscription.usage?.storage === 'object' ? `${subscription.usage.storage.used} MB / ${subscription.usage.storage.limit} MB` : `${subscription.usage?.storage || 0} MB / ${subscription.features.maxStorage * 1024} MB`}</li>
+                <li>Appointments: {typeof subscription.usage?.appointments === 'object' ? `${subscription.usage.appointments.used} / ${subscription.usage.appointments.limit}` : `${subscription.usage?.appointments || 0}`}</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Included Features</h4>
+              <ul className="space-y-2">
+                {(subscription.features.allowedModules || []).map(f => (
+                  <li key={f} className="text-green-700">✔ {f.charAt(0).toUpperCase() + f.slice(1)}</li>
+                ))}
+                {(subscription.features.customFeatures || []).filter(f => f.enabled).map(f => (
+                  <li key={f.name} className="text-green-700">✔ {f.name} {f.limit ? `(Limit: ${f.limit})` : ''}</li>
+                ))}
+              </ul>
+              <h4 className="font-medium mt-4 mb-2">Excluded Features</h4>
+              <ul className="space-y-2">
+                {['chat', 'analytics', 'marketing', 'telehealth'].filter(f => !(subscription.features.allowedModules || []).includes(f)).map(f => (
+                  <li key={f} className="text-red-600">✖ {f.charAt(0).toUpperCase() + f.slice(1)}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          {/* Upgrade prompt if any limit is reached */}
+          {(subscription.usage?.doctors >= subscription.features.maxDoctors ||
+            subscription.usage?.patients >= subscription.features.maxPatients ||
+            subscription.usage?.staff >= subscription.features.maxStaff ||
+            subscription.usage?.storage >= (subscription.features.maxStorage * 1024)) && (
+            <div className="mt-6 p-4 bg-yellow-100 text-yellow-800 rounded">
+              <strong>Limit reached:</strong> You have reached your plan's resource limit. <button className="ml-2 px-3 py-1 bg-indigo-600 text-white rounded" onClick={() => setShowUpgrade(true)}>Upgrade Now</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

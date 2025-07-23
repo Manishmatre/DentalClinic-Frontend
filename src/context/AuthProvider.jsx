@@ -204,12 +204,12 @@ export const AuthProvider = ({ children }) => {
           // Always fetch clinic data from the database
           try {
             const clinicResponse = await api.get(`/clinics/${clinicId}`);
-            if (clinicResponse && clinicResponse.data) {
-              const clinicData = clinicResponse.data;
-              console.log('Clinic data fetched during refresh:', clinicData);
-              localStorage.setItem('clinicData', JSON.stringify(clinicData));
-              setClinic(clinicData);
-            } else {
+          if (clinicResponse && clinicResponse.data) {
+            const clinicData = clinicResponse.data;
+            console.log('Clinic data fetched during refresh:', clinicData);
+            localStorage.setItem('clinicData', JSON.stringify(clinicData));
+            setClinic(clinicData);
+          } else {
               // If no clinic data, clear context and redirect
               setClinic(null);
               localStorage.removeItem('clinicData');

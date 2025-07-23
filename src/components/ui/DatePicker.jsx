@@ -47,8 +47,8 @@ const DatePicker = ({
         }
       } else if (value && isValid(value)) {
         setDateString(formatDate(value));
-      } else {
-        setDateString('');
+    } else {
+      setDateString('');
       }
     }
   }, [value, range]);
@@ -121,14 +121,14 @@ const DatePicker = ({
                 {value?.end ? formatDisplayDate(typeof value.end === 'string' ? parse(value.end, 'yyyy-MM-dd', new Date()) : value.end) : 'End'}
               </span>
             ) : (
-              <input
-                type="text"
-                readOnly
+            <input
+              type="text"
+              readOnly
                 value={value ? formatDisplayDate(typeof value === 'string' ? parse(value, 'yyyy-MM-dd', new Date()) : value) : ''}
-                placeholder={placeholder}
+              placeholder={placeholder}
                 className="bg-transparent border-none focus:outline-none w-full cursor-pointer text-sm text-gray-700 placeholder-gray-400"
-                disabled={disabled}
-              />
+              disabled={disabled}
+            />
             )}
           </div>
           {(value && (!range || value.start || value.end)) && showClearButton && !disabled && (
@@ -166,13 +166,13 @@ const DatePicker = ({
                 </div>
               </div>
             ) : (
-              <input
-                type="date"
-                value={dateString}
-                onChange={handleDateChange}
+            <input
+              type="date"
+              value={dateString}
+              onChange={handleDateChange}
                 className="w-full p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                autoFocus
-              />
+              autoFocus
+            />
             )}
           </div>
         )}

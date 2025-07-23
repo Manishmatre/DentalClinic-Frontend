@@ -10,8 +10,19 @@ import { TOOTH_CONDITIONS } from '../../constants/dentalConstants';
  * @param {array} surfaces Array of affected surfaces
  * @param {boolean} selected Whether the tooth is selected
  * @param {function} onClick Click handler
+ * @param {boolean} hasTreatment Whether the tooth has treatments
+ * @param {array} treatments Array of treatment objects for this tooth
  */
-const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected = false, onClick }) => {
+const ToothSvg = ({ 
+  toothNumber, 
+  toothType, 
+  condition, 
+  surfaces = [], 
+  selected = false, 
+  onClick, 
+  hasTreatment = false, 
+  treatments = [] 
+}) => {
   // Get color for the current condition from TOOTH_CONDITIONS
   const getConditionColor = (condition) => {
     const cond = TOOTH_CONDITIONS.find(c => c.value === condition);
@@ -81,6 +92,23 @@ const ToothSvg = ({ toothNumber, toothType, condition, surfaces = [], selected =
         margin: '2px', // add spacing between teeth
       }}
     >
+      {/* Treatment indicator */}
+      {hasTreatment && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: 2,
+            right: 2,
+            width: 12,
+            height: 12,
+            background: '#6366F1',
+            borderRadius: '50%',
+            border: '2px solid #fff',
+            zIndex: 2,
+          }} 
+          title={`${treatments.length} treatment(s)`}
+        ></div>
+      )}
       {/* Tooth Number */}
       <div className="tooth-number" style={{ 
         fontSize: '10px', 

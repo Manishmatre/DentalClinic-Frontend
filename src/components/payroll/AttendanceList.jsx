@@ -385,13 +385,13 @@ const AttendanceList = ({
           >
             Bulk Mark In/Out
           </Button>
-          <Button
-            onClick={onAddAttendance}
-            variant="primary"
-            className="flex items-center text-sm ml-2"
-          >
-            <FaPlus className="mr-1" /> Add Attendance
-          </Button>
+        <Button
+          onClick={onAddAttendance}
+          variant="primary"
+          className="flex items-center text-sm ml-2"
+        >
+          <FaPlus className="mr-1" /> Add Attendance
+        </Button>
           <Button onClick={handleExport} variant="info" className="flex items-center text-sm">Export</Button>
         </div>
       </div>
@@ -592,19 +592,19 @@ const AttendanceList = ({
                 const attendanceExists = !!attendance;
                 return (
                   <tr key={staff._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{staff.name}</div>
                       <div className="text-xs text-gray-500">{staff._id}</div>
-                    </td>
+                  </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{typeof selectedDate === 'string' ? selectedDate : (selectedDate instanceof Date ? selectedDate.toISOString().slice(0, 10) : String(selectedDate))}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${attendance ? (attendance.status === 'Present' ? 'bg-green-100 text-green-800' : attendance.status === 'Absent' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800') : 'bg-gray-100 text-gray-500'}`}>
                         {attendance ? attendance.status : 'Not Marked'}
-                      </span>
-                    </td>
+                    </span>
+                  </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{typeof inTime === 'string' ? inTime : (inTime ? inTime.toString() : '-')}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{typeof outTime === 'string' ? outTime : (outTime ? outTime.toString() : '-')}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
                         {/* Only show mark present/absent/on leave if not marked */}
                         {!attendance && user.role === 'Admin' && (
@@ -655,9 +655,9 @@ const AttendanceList = ({
                             <FaClock className="mr-1" /> View Punch Log
                           </Button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
+                    </div>
+                  </td>
+                </tr>
                 );
               })
             )}

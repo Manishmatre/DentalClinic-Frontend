@@ -175,7 +175,7 @@ const DentalBillList = ({ patientId, readOnly, bills: billsProp, loading: loadin
     if (statusFilter !== 'all' && bill.paymentStatus !== statusFilter) return false;
     if (search) {
       const s = search.toLowerCase();
-      return (
+    return (
         (bill.invoiceNumber && bill.invoiceNumber.toLowerCase().includes(s)) ||
         (bill.doctorId?.name && bill.doctorId.name.toLowerCase().includes(s))
       );

@@ -76,12 +76,12 @@ const ClinicProfile = () => {
       const clinicDataResponse = await clinicService.getClinicDetails(user.clinicId);
       // Support both {data: ...} and direct object
       const clinicData = clinicDataResponse.data || clinicDataResponse;
-      if (!clinicData) {
-        throw new Error('No clinic data received from server');
-      }
-      setClinicData(clinicData);
+        if (!clinicData) {
+          throw new Error('No clinic data received from server');
+        }
+        setClinicData(clinicData);
       // Only use real backend data for form initialization
-      setFormData({
+        setFormData({
         name: clinicData.name || '',
         email: clinicData.email || '',
         contact: clinicData.contact || '',
@@ -95,7 +95,7 @@ const ClinicProfile = () => {
         zipcode: clinicData.zipcode || '',
         about: clinicData.about || '',
         logo: clinicData.logo || ''
-      });
+        });
     } catch (err) {
       setError('Failed to load clinic data. Please try refreshing the page.');
     } finally {

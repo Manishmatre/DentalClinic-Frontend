@@ -151,7 +151,7 @@ const DentalProcedureForm = ({
   };
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6 scrollbar-none" style={{ maxHeight: '80vh', overflowY: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {error && <Alert variant="error" title="Error" message={error} />}
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -192,10 +192,10 @@ const DentalProcedureForm = ({
           render={({ field }) => (
             <Select
               label="Patient *"
-              options={patients?.map(patient => ({
+              options={Array.isArray(patients) ? patients.map(patient => ({
                 value: patient._id,
                 label: `${patient.firstName} ${patient.lastName}`
-              })) || []}
+              })) : []}
               {...field}
               error={errors.patient?.message}
             />
@@ -209,10 +209,10 @@ const DentalProcedureForm = ({
           render={({ field }) => (
             <Select
               label="Dentist *"
-              options={dentists?.map(dentist => ({
+              options={Array.isArray(dentists) ? dentists.map(dentist => ({
                 value: dentist._id,
                 label: `${dentist.firstName} ${dentist.lastName}`
-              })) || []}
+              })) : []}
               {...field}
               error={errors.dentist?.message}
             />

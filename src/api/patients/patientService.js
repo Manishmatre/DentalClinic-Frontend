@@ -549,6 +549,23 @@ const patientService = {
   async deleteExamination(id) {
     const response = await client.delete(`/patient-examinations/${id}`);
     return response.data;
+  },
+
+  // Get a patient by userId
+  async getPatientByUserId(userId) {
+    try {
+      const response = await client.get(`${PATIENTS_URL}/user/${userId}`);
+      if (response.data && response.data.data) {
+        return response.data.data;
+      } else if (response.data) {
+        return response.data;
+      } else {
+        throw new Error('Invalid response format');
+      }
+    } catch (error) {
+      console.error('Error fetching patient by userId:', error);
+      throw error;
+    }
   }
 };
 

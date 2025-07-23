@@ -29,10 +29,10 @@ const BillingDetail = ({ invoice, onEdit, onPrint, onBack, onProcessPayment }) =
       <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
         <div>
           <h3 className="text-lg leading-6 font-medium text-gray-900">
-            Invoice #{invoice.invoiceNumber || `INV-${invoice._id.substring(0, 8)}`}
+            Invoice #{invoice.billNumber || invoice.invoiceNumber || `INV-${invoice._id?.substring(0, 8)}`}
           </h3>
           <p className="mt-1 max-w-2xl text-sm text-gray-500">
-            Created on {format(new Date(invoice.createdAt), 'MMMM d, yyyy')}
+            Created on {invoice.createdAt ? format(new Date(invoice.createdAt), 'MMMM d, yyyy') : '-'}
           </p>
         </div>
         <div className="flex space-x-3">
@@ -120,7 +120,7 @@ const BillingDetail = ({ invoice, onEdit, onPrint, onBack, onProcessPayment }) =
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {invoice.services.map((service, index) => (
+                {(Array.isArray(invoice.services) ? invoice.services : Array.isArray(invoice.items) ? invoice.items : []).map((service, index) => (
                   <tr key={index}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {service.name}
@@ -129,10 +129,10 @@ const BillingDetail = ({ invoice, onEdit, onPrint, onBack, onProcessPayment }) =
                       {service.quantity}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${service.cost.toFixed(2)}
+                      ${service.cost ? service.cost.toFixed(2) : (service.unitPrice ? service.unitPrice.toFixed(2) : '0.00')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${(service.quantity * service.cost).toFixed(2)}
+                      ${(service.quantity * (service.cost || service.unitPrice || 0)).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -148,41 +148,36 @@ const BillingDetail = ({ invoice, onEdit, onPrint, onBack, onProcessPayment }) =
             <dl className="w-64 space-y-2">
               <div className="flex justify-between">
                 <dt className="text-sm font-medium text-gray-500">Subtotal:</dt>
-                <dd className="text-sm font-medium text-gray-900">${invoice.subtotal.toFixed(2)}</dd>
+                <dd className="text-sm font-medium text-gray-900">${(invoice.subtotal || invoice.totalAmount || 0).toFixed(2)}</dd>
               </div>
               
               {invoice.discount > 0 && (
                 <div className="flex justify-between">
                   <dt className="text-sm font-medium text-gray-500">Discount ({invoice.discount}%):</dt>
-                  <dd className="text-sm font-medium text-gray-900">-${(invoice.subtotal * (invoice.discount / 100)).toFixed(2)}</dd>
+                  <dd className="text-sm font-medium text-gray-900">-${((invoice.subtotal || 0) * (invoice.discount / 100)).toFixed(2)}</dd>
                 </div>
               )}
               
               {invoice.tax > 0 && (
                 <div className="flex justify-between">
                   <dt className="text-sm font-medium text-gray-500">Tax ({invoice.tax}%):</dt>
-                  <dd className="text-sm font-medium text-gray-900">${(invoice.subtotal * (1 - invoice.discount / 100) * (invoice.tax / 100)).toFixed(2)}</dd>
+                  <dd className="text-sm font-medium text-gray-900">${((invoice.subtotal || 0) * (1 - (invoice.discount || 0) / 100) * (invoice.tax / 100)).toFixed(2)}</dd>
                 </div>
               )}
               
               <div className="flex justify-between pt-2 border-t">
                 <dt className="text-base font-medium text-gray-900">Total:</dt>
-                <dd className="text-base font-bold text-gray-900">${invoice.total.toFixed(2)}</dd>
+                <dd className="text-base font-bold text-gray-900">${(invoice.totalAmount || invoice.total || 0).toFixed(2)}</dd>
               </div>
               
-              {invoice.paidAmount > 0 && (
-                <div className="flex justify-between pt-2">
-                  <dt className="text-base font-medium text-gray-900">Paid Amount:</dt>
-                  <dd className="text-base font-medium text-green-600">${invoice.paidAmount.toFixed(2)}</dd>
-                </div>
-              )}
-              
-              {invoice.paidAmount < invoice.total && (
-                <div className="flex justify-between pt-2">
-                  <dt className="text-base font-medium text-gray-900">Balance Due:</dt>
-                  <dd className="text-base font-bold text-red-600">${(invoice.total - invoice.paidAmount).toFixed(2)}</dd>
-                </div>
-              )}
+              <div className="flex justify-between pt-2">
+                <dt className="text-base font-medium text-gray-900">Paid Amount:</dt>
+                <dd className="text-base font-medium text-green-600">${(invoice.paidAmount || 0).toFixed(2)}</dd>
+              </div>
+              <div className="flex justify-between pt-2">
+                <dt className="text-base font-medium text-gray-900">Balance Due:</dt>
+                <dd className="text-base font-bold text-red-600">${(invoice.balanceAmount != null ? invoice.balanceAmount : (invoice.totalAmount || invoice.total || 0) - (invoice.paidAmount || 0)).toFixed(2)}</dd>
+              </div>
             </dl>
           </div>
         </div>

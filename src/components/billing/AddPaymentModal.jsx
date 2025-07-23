@@ -30,7 +30,7 @@ import * as Yup from 'yup';
 
 import billService from '../../api/billing/billService';
 
-const AddPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
+export const PaymentForm = ({ bill, onSubmit, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const toast = useToast();
   
@@ -85,7 +85,7 @@ const AddPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
           isClosable: true,
         });
         
-        onSuccess();
+        onSubmit();
       } else {
         throw new Error(response.error || 'Failed to add payment');
       }
@@ -103,125 +103,115 @@ const AddPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
   }
   
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Add Payment</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
-          {bill && (
-            <Box mb={4}>
-              <Flex justify="space-between" mb={2}>
-                <Text fontWeight="bold">Bill Number:</Text>
-                <Text>{bill.billNumber}</Text>
-              </Flex>
-              <Flex justify="space-between" mb={2}>
-                <Text fontWeight="bold">Patient:</Text>
-                <Text>{bill.patientId?.name || 'N/A'}</Text>
-              </Flex>
-              <Flex justify="space-between" mb={2}>
-                <Text fontWeight="bold">Total Amount:</Text>
-                <Text>{billService.formatCurrency(bill.totalAmount)}</Text>
-              </Flex>
-              <Flex justify="space-between" mb={2}>
-                <Text fontWeight="bold">Amount Paid:</Text>
-                <Text>{billService.formatCurrency(bill.paidAmount)}</Text>
-              </Flex>
-              <Flex justify="space-between" mb={2}>
-                <Text fontWeight="bold">Balance Due:</Text>
-                <Text color="red.500" fontWeight="bold">
-                  {billService.formatCurrency(bill.balanceAmount)}
-                </Text>
-              </Flex>
-              <Divider my={4} />
-            </Box>
-          )}
-          
-          <form onSubmit={formik.handleSubmit}>
-            <FormControl 
-              isRequired 
-              isInvalid={formik.touched.amount && formik.errors.amount}
-              mb={4}
-            >
-              <FormLabel>Payment Amount</FormLabel>
-              <NumberInput
-                value={formik.values.amount}
-                onChange={(value) => formik.setFieldValue('amount', value)}
-                max={bill?.balanceAmount || 0}
-                min={0}
-                precision={2}
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-              <FormErrorMessage>{formik.errors.amount}</FormErrorMessage>
-            </FormControl>
-            
-            <FormControl 
-              isRequired 
-              isInvalid={formik.touched.paymentMethod && formik.errors.paymentMethod}
-              mb={4}
-            >
-              <FormLabel>Payment Method</FormLabel>
-              <Select
-                value={formik.values.paymentMethod}
-                onChange={formik.handleChange}
-                name="paymentMethod"
-              >
-                <option value="cash">Cash</option>
-                <option value="credit_card">Credit Card</option>
-                <option value="debit_card">Debit Card</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="upi">UPI</option>
-                <option value="online">Online Payment</option>
-                <option value="insurance">Insurance</option>
-                <option value="other">Other</option>
-              </Select>
-              <FormErrorMessage>{formik.errors.paymentMethod}</FormErrorMessage>
-            </FormControl>
-            
-            <FormControl mb={4}>
-              <FormLabel>Transaction ID</FormLabel>
-              <Input
-                value={formik.values.transactionId}
-                onChange={formik.handleChange}
-                name="transactionId"
-                placeholder="For card payments, transfers, etc."
-              />
-            </FormControl>
-            
-            <FormControl mb={4}>
-              <FormLabel>Notes</FormLabel>
-              <Textarea
-                value={formik.values.notes}
-                onChange={formik.handleChange}
-                name="notes"
-                placeholder="Any additional information about this payment"
-                rows={3}
-              />
-            </FormControl>
-          </form>
-        </ModalBody>
-
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
-            Cancel
-          </Button>
+    <div>
+      {bill && (
+        <Box mb={4}>
+          <Flex justify="space-between" mb={2}>
+            <Text fontWeight="bold">Bill Number:</Text>
+            <Text>{bill.billNumber}</Text>
+          </Flex>
+          <Flex justify="space-between" mb={2}>
+            <Text fontWeight="bold">Patient:</Text>
+            <Text>{bill.patientId?.name || 'N/A'}</Text>
+          </Flex>
+          <Flex justify="space-between" mb={2}>
+            <Text fontWeight="bold">Total Amount:</Text>
+            <Text>{billService.formatCurrency(bill.totalAmount)}</Text>
+          </Flex>
+          <Flex justify="space-between" mb={2}>
+            <Text fontWeight="bold">Amount Paid:</Text>
+            <Text>{billService.formatCurrency(bill.paidAmount)}</Text>
+          </Flex>
+          <Flex justify="space-between" mb={2}>
+            <Text fontWeight="bold">Balance Due:</Text>
+            <Text color="red.500" fontWeight="bold">
+              {billService.formatCurrency(bill.balanceAmount)}
+            </Text>
+          </Flex>
+          <Divider my={4} />
+        </Box>
+      )}
+      <form onSubmit={formik.handleSubmit}>
+        <FormControl 
+          isRequired 
+          isInvalid={formik.touched.amount && formik.errors.amount}
+          mb={4}
+        >
+          <FormLabel>Payment Amount</FormLabel>
+          <NumberInput
+            value={formik.values.amount}
+            onChange={(value) => formik.setFieldValue('amount', value)}
+            max={bill?.balanceAmount || 0}
+            min={0}
+            precision={2}
+          >
+            <NumberInputField />
+            <NumberInputStepper>
+              <NumberIncrementStepper />
+              <NumberDecrementStepper />
+            </NumberInputStepper>
+          </NumberInput>
+          <FormErrorMessage>{formik.errors.amount}</FormErrorMessage>
+        </FormControl>
+        
+        <FormControl 
+          isRequired 
+          isInvalid={formik.touched.paymentMethod && formik.errors.paymentMethod}
+          mb={4}
+        >
+          <FormLabel>Payment Method</FormLabel>
+          <Select
+            value={formik.values.paymentMethod}
+            onChange={formik.handleChange}
+            name="paymentMethod"
+          >
+            <option value="cash">Cash</option>
+            <option value="credit_card">Credit Card</option>
+            <option value="debit_card">Debit Card</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="upi">UPI</option>
+            <option value="online">Online Payment</option>
+            <option value="insurance">Insurance</option>
+            <option value="other">Other</option>
+          </Select>
+          <FormErrorMessage>{formik.errors.paymentMethod}</FormErrorMessage>
+        </FormControl>
+        
+        <FormControl mb={4}>
+          <FormLabel>Transaction ID</FormLabel>
+          <Input
+            value={formik.values.transactionId}
+            onChange={formik.handleChange}
+            name="transactionId"
+            placeholder="For card payments, transfers, etc."
+          />
+        </FormControl>
+        
+        <FormControl mb={4}>
+          <FormLabel>Notes</FormLabel>
+          <Textarea
+            value={formik.values.notes}
+            onChange={formik.handleChange}
+            name="notes"
+            placeholder="Any additional information about this payment"
+            rows={3}
+          />
+        </FormControl>
+        <div className="flex justify-end space-x-3 mt-4">
+          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
           <Button 
             colorScheme="blue" 
             onClick={formik.handleSubmit}
             isLoading={loading}
             isDisabled={!bill || bill.balanceAmount <= 0}
+            type="submit"
           >
             Add Payment
           </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+        </div>
+      </form>
+    </div>
   );
 };
 
-export default AddPaymentModal;
+// No default export; only export PaymentForm

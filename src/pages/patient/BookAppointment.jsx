@@ -9,7 +9,6 @@ import Alert from '../../components/ui/Alert';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { format } from 'date-fns';
 import TextField from '../../components/ui/TextField';
-import TextArea from '../../components/ui/TextArea';
 import Select from '../../components/ui/Select';
 import Checkbox from '../../components/ui/Checkbox';
 import FileUpload from '../../components/ui/FileUpload';

@@ -4,7 +4,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';
 import DeleteConfirmationModal from '../ui/DeleteConfirmationModal';
-import { FaMoneyCheckAlt, FaUserCheck, FaChartBar, FaFileInvoiceDollar, FaPlus, FaFileCsv, FaFileExcel, FaFilePdf, FaSearch } from 'react-icons/fa';
+import { FaMoneyCheckAlt, FaUserCheck, FaChartBar, FaFileInvoiceDollar, FaPlus, FaFileCsv, FaFileExcel, FaFilePdf, FaSearch, FaFilter, FaSortUp, FaSortDown, FaPrint } from 'react-icons/fa';
 import PayrollList from './PayrollList';
 import PayrollModal from './PayrollModal';
 import AttendanceList from './AttendanceList';
@@ -20,6 +20,7 @@ import AsyncSelect from 'react-select/async';
 import staffService from '../../api/staff/staffService';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import Pagination from '../ui/Pagination';
 
 const TAB_DASHBOARD = 'dashboard';
 const TAB_PAYROLL = 'payroll';
@@ -66,6 +67,7 @@ const PayrollManagement = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [reportStatus, setReportStatus] = useState('');
   const [dateFilterType, setDateFilterType] = useState('month'); // 'day', 'week', 'month', 'custom'
+  const [showFilters, setShowFilters] = useState(false);
 
   // Persist active tab to localStorage
   useEffect(() => {
@@ -448,7 +450,7 @@ const PayrollManagement = () => {
       <>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card className="bg-blue-50 border-blue-200 min-h-[120px] flex-1 flex flex-col justify-center">
+          <Card className="bg-blue-50 border-blue-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-blue-100 p-3 mr-4">
                 <FaMoneyCheckAlt className="text-blue-600 text-xl" />
@@ -459,7 +461,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-green-50 border-green-200 min-h-[120px] flex-1 flex flex-col justify-center">
+          <Card className="bg-green-50 border-green-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-green-100 p-3 mr-4">
                 <FaUserCheck className="text-green-600 text-xl" />
@@ -470,7 +472,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-purple-50 border-purple-200 min-h-[120px] flex-1 flex flex-col justify-center">
+          <Card className="bg-purple-50 border-purple-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-purple-100 p-3 mr-4">
                 <FaUserCheck className="text-purple-600 text-xl" />
@@ -484,7 +486,7 @@ const PayrollManagement = () => {
         </div>
         {/* New Punch Analytics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card className="bg-yellow-50 border-yellow-200">
+          <Card className="bg-yellow-50 border-yellow-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-yellow-100 p-3 mr-4">
                 <FaUserCheck className="text-yellow-600 text-xl" />
@@ -495,7 +497,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-orange-50 border-orange-200">
+          <Card className="bg-orange-50 border-orange-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-orange-100 p-3 mr-4">
                 <FaUserCheck className="text-orange-600 text-xl" />
@@ -506,7 +508,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-teal-50 border-teal-200">
+          <Card className="bg-teal-50 border-teal-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 flex items-center">
               <div className="rounded-full bg-teal-100 p-3 mr-4">
                 <FaUserCheck className="text-teal-600 text-xl" />
@@ -517,7 +519,7 @@ const PayrollManagement = () => {
               </div>
             </div>
           </Card>
-          <Card className="bg-pink-50 border-pink-200 min-h-[120px] flex-1 flex flex-col justify-center">
+          <Card className="bg-pink-50 border-pink-200 min-h-[80px] flex-1 flex flex-col justify-center">
             <div className="p-4 h-full flex flex-col justify-start">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center">
@@ -525,9 +527,9 @@ const PayrollManagement = () => {
                     <FaUserCheck className="text-pink-600 text-xl" />
                   </div>
                   <span className="text-sm font-semibold text-gray-800">Most Punctual </span>
-                  <span className="font-bold text-pink-600 ml-1">{attendanceAnalytics.mostPunctual?._id || '-'}</span>
+                  <span className="font-bold text-pink-600 ml-1">{attendanceAnalytics?.mostPunctual?._id || '-'}</span>
                 </div>
-                <span className="text-xs text-gray-500">{attendanceAnalytics.mostPunctual?.count || 0} punches</span>
+                <span className="text-xs text-gray-500">{attendanceAnalytics?.mostPunctual?.count || 0} punches</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
@@ -535,9 +537,9 @@ const PayrollManagement = () => {
                     <FaUserCheck className="text-gray-600 text-xl" />
                   </div>
                   <span className="text-sm font-semibold text-gray-800">Least Punctual </span>
-                  <span className="font-bold text-gray-600 ml-1">{attendanceAnalytics.leastPunctual?._id || '-'}</span>
+                  <span className="font-bold text-gray-600 ml-1">{attendanceAnalytics?.leastPunctual?._id || '-'}</span>
                 </div>
-                <span className="text-xs text-gray-500">{attendanceAnalytics.leastPunctual?.count || 0} punches</span>
+                <span className="text-xs text-gray-500">{attendanceAnalytics?.leastPunctual?.count || 0} punches</span>
               </div>
             </div>
           </Card>
@@ -570,6 +572,36 @@ const PayrollManagement = () => {
       </>
     );
   };
+
+  // Reports tab handlers
+  const handleSort = (key) => {
+    setFilters(prev => ({ ...prev, sortBy: key }));
+  };
+
+  const getSortIcon = (key) => {
+    if (filters.sortBy === key) {
+      return filters.sortOrder === 'asc' ? <FaSortUp className="ml-1" /> : <FaSortDown className="ml-1" />;
+    }
+    return null;
+  };
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const resetFilters = () => {
+    setFilters({});
+    setSearch('');
+    setShowFilters(false);
+  };
+
+  // Pagination logic for reports tab
+  const reportsPageSize = pageSize;
+  const reportsCurrentPage = currentPage;
+  const allRows = filteredPayrolls.concat(filteredAttendance);
+  const reportsTotalPages = Math.max(1, Math.ceil(allRows.length / reportsPageSize));
+  const paginatedRows = allRows.slice((reportsCurrentPage - 1) * reportsPageSize, reportsCurrentPage * reportsPageSize);
 
   return (
     <div className="p-6">
@@ -684,242 +716,195 @@ const PayrollManagement = () => {
       )}
       {activeTab === TAB_REPORTS && (
         <Card title="Payroll & Attendance Reports">
+          {/* Search bar and filter toggle */}
+          <div className="flex flex-wrap items-center justify-between mb-4">
+            {/* Left side - Search bar */}
+            <div className="w-full md:w-auto mb-2 md:mb-0">
+              <form className="flex">
+                <div className="relative flex-grow">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FaSearch className="text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search records..."
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full md:w-64"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="px-4 py-2 bg-white border border-l-0 border-gray-300 rounded-r-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <FaFilter />
+                </button>
+              </form>
+            </div>
+            {/* Right side - Export/Print buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={handleExportCSV} variant="secondary" className="flex items-center text-sm"><FaFileCsv className="mr-1" /> CSV</Button>
+              <Button onClick={handleExportExcel} variant="secondary" className="flex items-center text-sm"><FaFileExcel className="mr-1" /> Excel</Button>
+              <Button onClick={handleExportPDF} variant="secondary" className="flex items-center text-sm"><FaFilePdf className="mr-1" /> PDF</Button>
+              <Button onClick={() => window.print()} variant="secondary" className="flex items-center text-sm"><FaPrint className="mr-1" /> Print</Button>
+            </div>
+          </div>
           {/* Advanced Filters */}
-          <div className="mb-4 flex flex-wrap gap-4 items-center">
-            {/* Employee Filter */}
-            <AsyncSelect
-              cacheOptions
-              defaultOptions
-              loadOptions={async (inputValue) => {
-                const res = await staffService.getStaff({ search: inputValue, status: 'Active' });
-                return (res.data || []).map(staff => ({ value: staff._id, label: staff.name }));
-              }}
-              onChange={setSelectedEmployee}
-              value={selectedEmployee}
-              placeholder="Select Employee"
-              className="w-64"
-              isClearable
-              menuPortalTarget={document.body}
-              styles={{ menuPortal: base => ({ ...base, zIndex: 2000 }) }}
-            />
-            {/* Status Filter */}
-            <select
-              value={reportStatus}
-              onChange={e => setReportStatus(e.target.value)}
-              className="border rounded px-2 py-1"
-            >
-              <option value="">All Statuses</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-              <option value="absent">Absent</option>
-              <option value="present">Present</option>
-              <option value="on leave">On Leave</option>
-            </select>
-            {/* Date Range Filter */}
-            <div className="flex gap-2 items-center">
-              <Button variant={dateFilterType === 'day' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('day')}>Today</Button>
-              <Button variant={dateFilterType === 'week' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('week')}>This Week</Button>
-              <Button variant={dateFilterType === 'month' ? 'primary' : 'outline'} size="sm" onClick={() => setQuickDateRange('month')}>This Month</Button>
-              <Button variant={dateFilterType === 'custom' ? 'primary' : 'outline'} size="sm" onClick={() => setDateFilterType('custom')}>Custom</Button>
-            </div>
-            {dateFilterType === 'custom' && (
-              <DatePicker
-                range
-                value={{
-                  start: reportDateRange.start ? new Date(reportDateRange.start) : null,
-                  end: reportDateRange.end ? new Date(reportDateRange.end) : null
-                }}
-                onChange={setReportDateRange}
-                className="border rounded px-2 py-1"
-              />
-            )}
-            <Button onClick={handleExportCSV} variant="info">Export CSV</Button>
-          </div>
-          {/* Summary KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-            <Card className="bg-blue-50 border-blue-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4">
-                <div className="text-sm font-medium text-gray-500">Total Payroll Amount</div>
-                <div className="mt-1 text-2xl font-bold text-blue-600">₹{filteredPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}</div>
+          {showFilters && (
+            <div className="bg-gray-50 p-4 rounded-md mb-4">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-lg font-medium text-gray-900">Advanced Filters</h3>
+                <Button
+                  onClick={resetFilters}
+                  variant="secondary"
+                  size="sm"
+                  className="flex items-center text-sm"
+                >
+                  <FaFilter className="mr-1" /> Remove Filters
+                </Button>
               </div>
-            </Card>
-            <Card className="bg-green-50 border-green-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4">
-                <div className="text-sm font-medium text-gray-500">Total Attendance</div>
-                <div className="mt-1 text-2xl font-bold text-green-600">{filteredAttendance.length}</div>
-              </div>
-            </Card>
-            <Card className="bg-yellow-50 border-yellow-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4">
-                <div className="text-sm font-medium text-gray-500">Total Overtime</div>
-                <div className="mt-1 text-2xl font-bold text-yellow-600">{filteredAttendance.reduce((sum, a) => sum + (a.overtimeHours || 0), 0)}</div>
-              </div>
-            </Card>
-            <Card className="bg-red-50 border-red-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4">
-                <div className="text-sm font-medium text-gray-500">Total Deductions</div>
-                <div className="mt-1 text-2xl font-bold text-red-600">₹{filteredPayrolls.reduce((sum, p) => sum + (p.deductions || 0), 0).toLocaleString()}</div>
-              </div>
-            </Card>
-            <Card className="bg-purple-50 border-purple-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4">
-                <div className="text-sm font-medium text-gray-500">Total Leaves</div>
-                <div className="mt-1 text-2xl font-bold text-purple-600">{filteredAttendance.filter(a => a.status === 'On Leave').length}</div>
-              </div>
-            </Card>
-            <Card className="bg-pink-50 border-pink-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 h-full flex flex-col justify-start">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center">
-                    <div className="rounded-full bg-pink-100 p-3 mr-3">
-                      <FaUserCheck className="text-pink-600 text-xl" />
-                    </div>
-                    <span className="text-sm font-semibold text-gray-800">Most Punctual </span>
-                    <span className="font-bold text-pink-600 ml-1">{attendanceAnalytics.mostPunctual?._id || '-'}</span>
-                  </div>
-                  <span className="text-xs text-gray-500">{attendanceAnalytics.mostPunctual?.count || 0} punches</span>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+                  <select
+                    name="month"
+                    value={filters.month}
+                    onChange={handleFilterChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">All Months</option>
+                    {["January","February","March","April","May","June","July","August","September","October","November","December"].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="rounded-full bg-gray-100 p-3 mr-3">
-                      <FaUserCheck className="text-gray-600 text-xl" />
-                    </div>
-                    <span className="text-sm font-semibold text-gray-800">Least Punctual </span>
-                    <span className="font-bold text-gray-600 ml-1">{attendanceAnalytics.leastPunctual?._id || '-'}</span>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                  <input
+                    type="number"
+                    name="year"
+                    value={filters.year}
+                    onChange={handleFilterChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="e.g. 2024"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    name="status"
+                    value={filters.status}
+                    onChange={handleFilterChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="Processed">Processed</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Failed">Failed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                  <div className="flex">
+                    <select
+                      name="sortBy"
+                      value={filters.sortBy}
+                      onChange={handleFilterChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="createdAt">Date Processed</option>
+                      <option value="employeeName">Employee Name</option>
+                      <option value="amount">Amount</option>
+                      <option value="status">Status</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setFilters(prev => ({ ...prev, sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc' }))}
+                      className="px-3 py-2 border border-l-0 border-gray-300 rounded-r-md bg-white text-gray-500 hover:bg-gray-50"
+                    >
+                      {filters.sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />}
+                    </button>
                   </div>
-                  <span className="text-xs text-gray-500">{attendanceAnalytics.leastPunctual?.count || 0} punches</span>
                 </div>
               </div>
-            </Card>
-          </div>
-          {/* Charts */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <Card title="Payroll Trend">
-              <LineChart data={payrollAnalytics ? {
-                labels: payrollAnalytics.trend.map(t => `${t.month}/${t.year}`),
-                datasets: [{
-                  label: 'Payroll Amount',
-                  data: payrollAnalytics.trend.map(t => t.total),
-                  borderColor: '#4F46E5',
-                  backgroundColor: 'rgba(79,70,229,0.1)',
-                  fill: true,
-                  tension: 0.4
-                }]
-              } : { labels: [], datasets: [] }} height={250} />
-            </Card>
-            <Card title="Attendance Trend">
-              <LineChart data={attendanceAnalytics ? {
-                labels: attendanceAnalytics.trend.map(t => `${t.month}/${t.year}`),
-                datasets: [
-                  {
-                    label: 'Present',
-                    data: attendanceAnalytics.trend.map(t => t.present),
-                    borderColor: '#10B981',
-                    backgroundColor: 'rgba(16,185,129,0.1)',
-                    fill: true,
-                    tension: 0.4
-                  },
-                  {
-                    label: 'Absent',
-                    data: attendanceAnalytics.trend.map(t => t.absent),
-                    borderColor: '#EF4444',
-                    backgroundColor: 'rgba(239,68,68,0.1)',
-                    fill: true,
-                    tension: 0.4
-                  },
-                  {
-                    label: 'On Leave',
-                    data: attendanceAnalytics.trend.map(t => t.onLeave),
-                    borderColor: '#F59E42',
-                    backgroundColor: 'rgba(245,158,66,0.1)',
-                    fill: true,
-                    tension: 0.4
-                  }
-                ]
-              } : { labels: [], datasets: [] }} height={250} />
-            </Card>
-          </div>
-          {/* Consolidated Table */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Payroll & Attendance Records</h3>
-            {/* Table Controls */}
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <div className="relative flex-grow max-w-xs">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FaSearch className="text-gray-400" /></span>
-                <input
-                  type="text"
-                  placeholder="Search by employee, status, date..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleExportCSV} variant="info" size="sm" className="flex items-center"><FaFileCsv className="mr-1" />Export CSV</Button>
-              <Button onClick={() => handleExportExcel()} variant="success" size="sm" className="flex items-center"><FaFileExcel className="mr-1" />Export Excel</Button>
-              <Button onClick={() => handleExportPDF()} variant="danger" size="sm" className="flex items-center"><FaFilePdf className="mr-1" />Export PDF</Button>
             </div>
-            <div className="overflow-x-auto rounded-lg shadow border border-gray-200 bg-white">
-              <table className="min-w-full table-fixed text-sm">
-                <thead className="bg-gray-50">
+          )}
+          {/* Reports Table (same style as PayrollList) */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button className="flex items-center focus:outline-none" onClick={() => handleSort('employeeName')}>
+                      Employee {getSortIcon('employeeName')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button className="flex items-center focus:outline-none" onClick={() => handleSort('month')}>
+                      Month {getSortIcon('month')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button className="flex items-center focus:outline-none" onClick={() => handleSort('year')}>
+                      Year {getSortIcon('year')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button className="flex items-center focus:outline-none" onClick={() => handleSort('amount')}>
+                      Amount {getSortIcon('amount')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button className="flex items-center focus:outline-none" onClick={() => handleSort('status')}>
+                      Status {getSortIcon('status')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {paginatedRows.length === 0 ? (
                   <tr>
-                    <th className="px-4 py-2 font-medium text-gray-600">Type</th>
-                    <th className="px-4 py-2 font-medium text-gray-600">Employee</th>
-                    <th className="px-4 py-2 font-medium text-gray-600">Date</th>
-                    <th className="px-4 py-2 font-medium text-gray-600">Status</th>
-                    <th className="px-4 py-2 font-medium text-gray-600">Amount/In</th>
-                    <th className="px-4 py-2 font-medium text-gray-600">Out</th>
+                    <td colSpan="6" className="px-6 py-4 text-center text-gray-400">No records found for selected filters.</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredPayrolls.concat(filteredAttendance).filter(row => {
-                    // Global search only
-                    const q = search.toLowerCase();
-                    if (q && !(
-                      (row.employeeName || row.employeeId || '').toLowerCase().includes(q) ||
-                      (row.status || '').toLowerCase().includes(q) ||
-                      (row.date || '').toLowerCase().includes(q)
-                    )) return false;
-                    return true;
-                  }).map((row, idx) => {
-                    if (row.amount !== undefined) {
-                      // Payroll row
-                      return (
-                        <tr key={`payroll-${row._id || idx}`}> 
-                          <td className="px-4 py-2">Payroll</td>
-                          <td className="px-4 py-2">{row.employeeName || row.employeeId}</td>
-                          <td className="px-4 py-2">{row.date || '-'}</td>
-                          <td className="px-4 py-2">{row.status || '-'}</td>
-                          <td className="px-4 py-2">₹{row.amount || 0}</td>
-                          <td className="px-4 py-2">-</td>
-                        </tr>
-                      );
-                    } else {
-                      // Attendance row
-                      let inTime = '', outTime = '';
-                      if (row.punches && row.punches.length > 0) {
-                        const punchesIn = row.punches.filter(p => p.type === 'IN');
-                        const punchesOut = row.punches.filter(p => p.type === 'OUT');
-                        if (punchesIn.length > 0) inTime = new Date(punchesIn[0].timeIn).toLocaleTimeString();
-                        if (punchesOut.length > 0) outTime = new Date(punchesOut[punchesOut.length - 1].timeIn).toLocaleTimeString();
-                      }
-                      return (
-                        <tr key={`attendance-${row._id || idx}`}> 
-                          <td className="px-4 py-2">Attendance</td>
-                          <td className="px-4 py-2">{row.employeeName || row.employeeId}</td>
-                          <td className="px-4 py-2">{row.date || '-'}</td>
-                          <td className="px-4 py-2">{row.status || '-'}</td>
-                          <td className="px-4 py-2">{inTime}</td>
-                          <td className="px-4 py-2">{outTime}</td>
-                        </tr>
-                      );
-                    }
-                  })}
-                  {(filteredPayrolls.length === 0 && filteredAttendance.length === 0) && (
-                    <tr><td colSpan={6} className="text-center text-gray-400 py-6">No records found for selected filters.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                ) : (
+                  paginatedRows.map((row, idx) => (
+                    <tr key={row._id || idx}>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.employeeName || row.employeeId}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.month || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.year || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.amount !== undefined ? `₹${row.amount}` : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.status || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        {/* Actions: view/edit/delete if needed */}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* Pagination */}
+          <Pagination
+            currentPage={reportsCurrentPage}
+            totalPages={reportsTotalPages}
+            onPageChange={setCurrentPage}
+          />
+          <div className="flex justify-end items-center mt-2">
+            <span className="mr-2 text-sm text-gray-600">Rows per page:</span>
+            <select
+              value={pageSize}
+              onChange={e => setPageSize(Number(e.target.value))}
+              className="border rounded px-2 py-1 text-sm"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
           </div>
         </Card>
       )}

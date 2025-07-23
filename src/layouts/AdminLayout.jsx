@@ -437,7 +437,6 @@ const AdminSidebar = ({ clinic, collapsed, setCollapsed }) => {
         { path: '/admin/dental-imaging', label: 'Dental Imaging', icon: icons.dentalImaging },
         { path: '/admin/dental-treatments', label: 'Treatment Management', icon: icons.dentalHistory },
         { path: '/admin/dental-billing', label: 'Dental Billing', icon: icons.billing },
-        { path: '/admin/dental-procedure-schedule', label: 'Procedure Schedule', icon: icons.calendar },
         { path: '/admin/dental/chairs', label: 'Chair Management', icon: icons.dentalChair },
       ]
     },

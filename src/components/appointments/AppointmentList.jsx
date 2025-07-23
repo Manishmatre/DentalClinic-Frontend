@@ -86,7 +86,8 @@ const AppointmentList = ({
 
   // Apply filters and sorting
   useEffect(() => {
-    let result = [...appointments];
+    // Defensive: always treat appointments as an array
+    let result = Array.isArray(appointments) ? [...appointments] : [];
     
     console.log('Processing appointments for list view:', result);
     

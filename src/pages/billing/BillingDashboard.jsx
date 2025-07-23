@@ -13,11 +13,12 @@ import {
   Text,
   HStack,
   useToast,
-  SimpleGrid
+  SimpleGrid,
+  Tooltip
 } from '@chakra-ui/react';
 import { 
   BarChart, Bar, LineChart, Line, PieChart, Pie, 
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   Cell
 } from 'recharts';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -29,7 +30,12 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import { FaFileCsv, FaFileExcel, FaFilePdf, FaSearch, FaChartBar, FaFileInvoiceDollar, FaFilter, FaPrint, FaSort, FaEye, FaUserCheck } from 'react-icons/fa';
+import { FaFileCsv, FaFileExcel, FaFilePdf, FaSearch, FaChartBar, FaFileInvoiceDollar, FaFilter, FaPrint, FaSort, FaEye, FaUserCheck, FaRupeeSign, FaUserMd } from 'react-icons/fa';
+import BillingForm from '../../components/billing/BillingForm';
+import DentalBillDetails from '../../components/dental/DentalBillDetails';
+import Modal from '../../components/ui/Modal';
+import Alert from '../../components/ui/Alert';
+import { PaymentForm } from '../../components/billing/AddPaymentModal';
 
 const TAB_DASHBOARD = 'dashboard';
 const TAB_INVOICES = 'invoices';
@@ -103,6 +109,21 @@ const BillingDashboard = () => {
   
   // Chart colors
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+  
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showInvoiceDetail, setShowInvoiceDetail] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [viewingInvoice, setViewingInvoice] = useState(null);
+  const [deletingInvoice, setDeletingInvoice] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+  
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentDetail, setShowPaymentDetail] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [viewingPayment, setViewingPayment] = useState(null);
+  const [deletingPayment, setDeletingPayment] = useState(null);
+  const [deletePaymentError, setDeletePaymentError] = useState(null);
+  const [selectedBillForPayment, setSelectedBillForPayment] = useState(null);
   
   useEffect(() => {
     fetchBillingStats();
@@ -200,11 +221,10 @@ const BillingDashboard = () => {
         startDate: dateRange.start,
         endDate: dateRange.end
       };
-      
       const response = await billService.getBills(params);
-      setInvoices(response.data || response || []);
-      setTotalRecords(response.total || response.data?.length || 0);
-      setTotalPages(response.totalPages || 1);
+      setInvoices(Array.isArray(response?.bills) ? response.bills : Array.isArray(response?.data) ? response.data : []);
+      setTotalRecords(response.pagination?.total || response.total || response.data?.length || 0);
+      setTotalPages(response.pagination?.pages || response.totalPages || 1);
     } catch (error) {
       toast({
         title: 'Error',
@@ -218,21 +238,34 @@ const BillingDashboard = () => {
     }
   };
   
-  // Fetch payments data
+  // Fetch payments data (aggregate from all bills)
   const fetchPayments = async () => {
     setTableLoading(true);
     try {
-      // Mock data for now - replace with actual API call
-      const mockPayments = [
-        { id: 'PAY-001', date: '2024-06-02', patient: 'Patient 1', amount: 900, mode: 'Cash', invoice: 'INV-001', status: 'Success' },
-        { id: 'PAY-002', date: '2024-06-02', patient: 'Patient 2', amount: 1800, mode: 'Card', invoice: 'INV-002', status: 'Success' },
-        { id: 'PAY-003', date: '2024-06-02', patient: 'Patient 3', amount: 2700, mode: 'UPI', invoice: 'INV-003', status: 'Refunded' },
-        { id: 'PAY-004', date: '2024-06-02', patient: 'Patient 4', amount: 3600, mode: 'Cheque', invoice: 'INV-004', status: 'Failed' },
-        { id: 'PAY-005', date: '2024-06-02', patient: 'Patient 5', amount: 4500, mode: 'Cash', invoice: 'INV-005', status: 'Success' }
-      ];
-      setPayments(mockPayments);
-      setTotalRecords(mockPayments.length);
-      setTotalPages(1);
+      const params = {
+        page: 1, // fetch all bills for aggregation
+        limit: 1000, // adjust as needed for large clinics
+        search: search,
+        status: statusFilter,
+        startDate: dateRange.start,
+        endDate: dateRange.end
+      };
+      const response = await billService.getBills(params);
+      const bills = Array.isArray(response?.bills) ? response.bills : Array.isArray(response?.data) ? response.data : [];
+      // Aggregate all payments from all bills
+      const allPayments = bills.flatMap(bill =>
+        (bill.payments || []).map(payment => ({
+          ...payment,
+          billNumber: bill.billNumber || bill.invoiceNumber || bill.id,
+          patient: bill.patientId?.name || bill.patient || '-',
+          doctor: bill.doctorId?.userId?.name || bill.doctorId?.name || '-',
+          billDate: bill.createdAt || bill.billDate || bill.date,
+          billId: bill._id || bill.id
+        }))
+      );
+      setPayments(allPayments);
+      setTotalRecords(allPayments.length);
+      setTotalPages(Math.ceil(allPayments.length / pageSize));
     } catch (error) {
       toast({
         title: 'Error',
@@ -345,7 +378,7 @@ const BillingDashboard = () => {
   const getHeadersForTab = (tabName) => {
     switch (tabName) {
       case 'Invoices':
-        return ['Invoice #', 'Date', 'Patient', 'Amount', 'Status', 'Payment Mode', 'GST'];
+        return ['Invoice #', 'Date', 'Patient', 'Amount', 'Status', 'Type', 'Payment Mode', 'GST'];
       case 'Payments':
         return ['Payment ID', 'Date', 'Patient', 'Amount', 'Mode', 'Invoice #', 'Status'];
       case 'Refunds':
@@ -359,16 +392,20 @@ const BillingDashboard = () => {
   
   const getRowDataForTab = (item, tabName) => {
     switch (tabName) {
-      case 'Invoices':
+      case 'Invoices': {
+        // Determine if this is a dental bill
+        const isDental = Array.isArray(item.items) && item.items.some(i => i.category === 'procedure' && i.procedureId);
         return [
-          item.invoiceNumber || item.id,
-          format(new Date(item.createdAt || item.date), 'dd MMM yyyy'),
+          item.invoiceNumber || item.billNumber || item.id,
+          format(new Date(item.createdAt || item.billDate || item.date), 'dd MMM yyyy'),
           item.patientName || item.patient,
-          formatINRCurrency(item.total || item.amount),
+          formatINRCurrency(item.totalAmount || item.total || item.amount),
           item.paymentStatus || item.status,
+          isDental ? 'Dental' : 'General',
           item.paymentMode || '-',
           formatINRCurrency(item.gst || 0)
         ];
+      }
       case 'Payments':
         return [
           item.id,
@@ -441,6 +478,70 @@ const BillingDashboard = () => {
     return <LoadingSpinner />;
   }
   
+  // Handlers for CRUD
+  const handleAddInvoice = () => {
+    setEditingInvoice(null);
+    setShowInvoiceModal(true);
+  };
+  const handleEditInvoice = (invoice) => {
+    setEditingInvoice(invoice);
+    setShowInvoiceModal(true);
+  };
+  const handleViewInvoice = (invoice) => {
+    setViewingInvoice(invoice);
+    setShowInvoiceDetail(true);
+  };
+  const handleDeleteInvoice = (invoice) => {
+    setDeletingInvoice(invoice);
+    setDeleteError(null);
+  };
+  const handleConfirmDeleteInvoice = async () => {
+    if (!deletingInvoice) return;
+    try {
+      const res = await billService.deleteBill(deletingInvoice._id || deletingInvoice.id);
+      if (res && !res.error) {
+        setDeletingInvoice(null);
+        fetchInvoices();
+        toast({ title: 'Invoice deleted', status: 'success', duration: 3000 });
+      } else {
+        throw new Error(res.error || 'Failed to delete invoice');
+      }
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to delete invoice');
+    }
+  };
+  
+  // Handlers for Payment CRUD
+  const handleAddPayment = (bill) => {
+    setSelectedBillForPayment(bill);
+    setEditingPayment(null);
+    setShowPaymentModal(true);
+  };
+  const handleEditPayment = (payment) => {
+    setEditingPayment(payment);
+    setShowPaymentModal(true);
+  };
+  const handleViewPayment = (payment) => {
+    setViewingPayment(payment);
+    setShowPaymentDetail(true);
+  };
+  const handleDeletePayment = (payment) => {
+    setDeletingPayment(payment);
+    setDeletePaymentError(null);
+  };
+  const handleConfirmDeletePayment = async () => {
+    if (!deletingPayment) return;
+    try {
+      // Implement delete payment API call here
+      // await billService.deletePayment(deletingPayment._id || deletingPayment.id);
+      setDeletingPayment(null);
+      fetchPayments();
+      toast({ title: 'Payment deleted', status: 'success', duration: 3000 });
+    } catch (err) {
+      setDeletePaymentError(err.message || 'Failed to delete payment');
+    }
+  };
+  
   return (
     <div className="p-6">
       {/* Page Header */}
@@ -451,7 +552,7 @@ const BillingDashboard = () => {
         </div>
         <div className="mt-4 md:mt-0">
           <select 
-            value={timeRange} 
+            value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
             className="border rounded px-3 py-2 text-sm"
           >
@@ -486,8 +587,8 @@ const BillingDashboard = () => {
         <>
           {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-blue-50 border-blue-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+            <Card className="bg-blue-50 border-blue-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-blue-100 p-3 mr-4">
                   <FaFileInvoiceDollar className="text-blue-600 text-xl" />
                 </div>
@@ -497,9 +598,9 @@ const BillingDashboard = () => {
                   <span className="text-xs text-gray-500">From {stats.totalBills} bills</span>
                 </div>
               </div>
-            </Card>
-            <Card className="bg-green-50 border-green-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+        </Card>
+            <Card className="bg-green-50 border-green-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-green-100 p-3 mr-4">
                   <FaFilePdf className="text-green-600 text-xl" />
                 </div>
@@ -509,9 +610,9 @@ const BillingDashboard = () => {
                   <span className="text-xs text-gray-500">{calculateCollectionRate().toFixed(1)}% collection rate</span>
                 </div>
               </div>
-            </Card>
-            <Card className="bg-yellow-50 border-yellow-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+        </Card>
+            <Card className="bg-yellow-50 border-yellow-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-yellow-100 p-3 mr-4">
                   <FaFileInvoiceDollar className="text-yellow-600 text-xl" />
                 </div>
@@ -521,9 +622,9 @@ const BillingDashboard = () => {
                   <span className="text-xs text-gray-500">Awaiting payment</span>
                 </div>
               </div>
-            </Card>
-            <Card className="bg-red-50 border-red-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+        </Card>
+            <Card className="bg-red-50 border-red-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-red-100 p-3 mr-4">
                   <FaFileInvoiceDollar className="text-red-600 text-xl" />
                 </div>
@@ -533,12 +634,12 @@ const BillingDashboard = () => {
                   <span className="text-xs text-gray-500">Past due</span>
                 </div>
               </div>
-            </Card>
+        </Card>
           </div>
           {/* Analytics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-indigo-50 border-indigo-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+            <Card className="bg-indigo-50 border-indigo-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-indigo-100 p-3 mr-4">
                   <FaUserCheck className="text-indigo-600 text-xl" />
                 </div>
@@ -549,8 +650,8 @@ const BillingDashboard = () => {
                 </div>
               </div>
             </Card>
-            <Card className="bg-orange-50 border-orange-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+            <Card className="bg-orange-50 border-orange-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-orange-100 p-3 mr-4">
                   <FaFileInvoiceDollar className="text-orange-600 text-xl" />
                 </div>
@@ -561,8 +662,8 @@ const BillingDashboard = () => {
                 </div>
               </div>
             </Card>
-            <Card className="bg-pink-50 border-pink-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+            <Card className="bg-pink-50 border-pink-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-pink-100 p-3 mr-4">
                   <FaFileInvoiceDollar className="text-pink-600 text-xl" />
                 </div>
@@ -573,8 +674,8 @@ const BillingDashboard = () => {
                 </div>
               </div>
             </Card>
-            <Card className="bg-teal-50 border-teal-200 min-h-[120px] flex-1 flex flex-col justify-center">
-              <div className="p-4 flex items-center">
+            <Card className="bg-teal-50 border-teal-200 min-h-[40px] flex-1 flex flex-col justify-center">
+              <div className="p-2 flex items-center">
                 <div className="rounded-full bg-teal-100 p-3 mr-4">
                   <FaFileInvoiceDollar className="text-teal-600 text-xl" />
                 </div>
@@ -586,111 +687,111 @@ const BillingDashboard = () => {
               </div>
             </Card>
           </div>
-          {/* Charts Row */}
+      {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <Card>
+        <Card>
               <div className="p-4">
                 <div className="text-lg font-semibold mb-2">Monthly Revenue Trend</div>
               </div>
               <div className="h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={formatMonthlyTrendData()}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => formatINRCurrency(value)} />
-                    <Legend />
-                    <Line type="monotone" dataKey="billed" stroke="#8884d8" name="Billed Amount" />
-                    <Line type="monotone" dataKey="paid" stroke="#82ca9d" name="Collected Amount" />
-                  </LineChart>
-                </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={formatMonthlyTrendData()}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                    <RechartsTooltip formatter={(value) => formatINRCurrency(value)} />
+                <Legend />
+                <Line type="monotone" dataKey="billed" stroke="#8884d8" name="Billed Amount" />
+                <Line type="monotone" dataKey="paid" stroke="#82ca9d" name="Collected Amount" />
+              </LineChart>
+            </ResponsiveContainer>
               </div>
-            </Card>
-            <Card>
+        </Card>
+        <Card>
               <div className="p-4">
                 <div className="text-lg font-semibold mb-2">Bill Status Distribution</div>
               </div>
               <div className="h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={formatStatusData()}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                      nameKey="name"
-                      label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {formatStatusData().map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => formatINRCurrency(value)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={formatStatusData()}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                  nameKey="name"
+                  label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                >
+                  {formatStatusData().map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                    <RechartsTooltip formatter={(value) => formatINRCurrency(value)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
               </div>
-            </Card>
+        </Card>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <Card>
+        <Card>
               <div className="p-4">
                 <div className="text-lg font-semibold mb-2">Payment Methods</div>
               </div>
               <div className="h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={formatPaymentMethodData()}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => formatINRCurrency(value)} />
-                    <Bar dataKey="value" fill="#82ca9d" name="Amount" />
-                  </BarChart>
-                </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={formatPaymentMethodData()}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                    <RechartsTooltip formatter={(value) => formatINRCurrency(value)} />
+                <Bar dataKey="value" fill="#82ca9d" name="Amount" />
+              </BarChart>
+            </ResponsiveContainer>
               </div>
-            </Card>
-            <Card>
+        </Card>
+        <Card>
               <div className="p-4">
                 <div className="text-lg font-semibold mb-2">Insurance Coverage</div>
               </div>
               <div className="h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'Covered by Insurance', value: stats.summary?.totalInsuranceCoverage || 0 },
-                        { 
-                          name: 'Patient Responsibility', 
-                          value: Math.max(0, (stats.summary?.totalBilled || 0) - (stats.summary?.totalInsuranceCoverage || 0))
-                        }
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                      nameKey="name"
-                      label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    >
-                      <Cell fill="#0088FE" />
-                      <Cell fill="#00C49F" />
-                    </Pie>
-                    <Tooltip formatter={(value) => formatINRCurrency(value)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Covered by Insurance', value: stats.summary?.totalInsuranceCoverage || 0 },
+                    { 
+                      name: 'Patient Responsibility', 
+                      value: Math.max(0, (stats.summary?.totalBilled || 0) - (stats.summary?.totalInsuranceCoverage || 0))
+                    }
+                  ]}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                  nameKey="name"
+                  label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                >
+                  <Cell fill="#0088FE" />
+                  <Cell fill="#00C49F" />
+                </Pie>
+                    <RechartsTooltip formatter={(value) => formatINRCurrency(value)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
               </div>
-            </Card>
+        </Card>
           </div>
         </>
       )}
@@ -716,7 +817,7 @@ const BillingDashboard = () => {
               <Button variant="secondary" size="sm" className="flex items-center text-sm" onClick={() => handleExport('excel', invoices, 'Invoices')}><FaFileExcel className="mr-1" /> Excel</Button>
               <Button variant="secondary" size="sm" className="flex items-center text-sm" onClick={() => handleExport('csv', invoices, 'Invoices')}><FaFileCsv className="mr-1" /> CSV</Button>
               <Button variant="secondary" size="sm" className="flex items-center text-sm"><FaPrint className="mr-1" /> Print</Button>
-              <Button variant="primary" size="sm" className="flex items-center text-sm ml-2"><FaFileInvoiceDollar className="mr-1" /> Add Invoice</Button>
+              <Button variant="primary" size="sm" className="flex items-center text-sm ml-2" onClick={handleAddInvoice}><FaFileInvoiceDollar className="mr-1" /> Add Invoice</Button>
             </div>
           </div>
           {/* Advanced Filters (collapsible) */}
@@ -772,38 +873,73 @@ const BillingDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Invoice # <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Date <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Patient <FaSort className="inline ml-1 text-gray-300" /></th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Amount <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Mode</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GST</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {tableLoading ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-4 whitespace-nowrap text-center">Loading...</td>
+                      <td colSpan="10" className="px-6 py-4 whitespace-nowrap text-center">Loading...</td>
                     </tr>
                   ) : invoices.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-4 whitespace-nowrap text-center">No invoices found.</td>
+                      <td colSpan="10" className="px-6 py-4 whitespace-nowrap text-center">No invoices found.</td>
                     </tr>
                   ) : (
                     invoices.map(inv => (
                       <tr key={inv._id || inv.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap"><input type="checkbox" /></td>
-                        <td className="px-6 py-4 whitespace-nowrap">{inv.invoiceNumber || inv.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{format(new Date(inv.createdAt || inv.date), 'dd MMM yyyy')}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{inv.patientName || inv.patient}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{formatINRCurrency(inv.total || inv.amount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{inv.paymentStatus || inv.status}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{inv.paymentMode || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{formatINRCurrency(inv.gst || 0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaFileInvoiceDollar className="h-5 w-5 text-green-600 mr-2" />
+                            {inv.billNumber || inv.invoiceNumber || inv.id}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{format(new Date(inv.createdAt || inv.date), 'dd MMM yyyy')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{inv.patientId?.name || inv.patient || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaUserMd className="h-5 w-5 text-indigo-500 mr-2" />
+                            <Tooltip content={`Doctor ID: ${inv.doctorId?._id || inv.doctorId || 'Unknown'}`}>
+                              <span>{
+                                inv.doctorId?.userId?.name ||
+                                inv.doctorId?.name ||
+                                (typeof inv.doctorId === 'string' && inv.doctorId !== '[object Object]' ? inv.doctorId : 'N/A')
+                              }</span>
+                            </Tooltip>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{inv.dueDate ? format(new Date(inv.dueDate), 'dd MMM yyyy') : '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaRupeeSign className="mr-1 text-green-500" />
+                            {(inv.totalAmount || inv.total || inv.amount || 0).toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{inv.paymentStatus || inv.status}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{inv.paymentMode || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-3">
-                            <button className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center" title="View"><FaEye size={16} /><span className="ml-1 hidden sm:inline">View</span></button>
-                            <button className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center" title="Download"><FaFilePdf size={16} /><span className="ml-1 hidden sm:inline">Download</span></button>
-                            <button className="text-red-600 hover:text-red-900 transition-colors duration-200 flex items-center" title="Refund"><FaFileInvoiceDollar size={16} /><span className="ml-1 hidden sm:inline">Refund</span></button>
+                          <div className="flex justify-end space-x-2">
+                            <Tooltip content="View">
+                              <Button variant="primary" size="xs" className="p-2" onClick={() => handleViewInvoice(inv)}>
+                                <FaEye size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Download PDF">
+                              <Button variant="success" size="xs" className="p-2">
+                                <FaFilePdf size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Refund">
+                              <Button variant="danger" size="xs" className="p-2" onClick={() => handleDeleteInvoice(inv)}>
+                                <FaFileInvoiceDollar size={16} />
+                              </Button>
+                            </Tooltip>
                           </div>
                         </td>
                       </tr>
@@ -848,6 +984,46 @@ const BillingDashboard = () => {
               </Button>
             </div>
           </div>
+          {/* CRUD Modals */}
+          {showInvoiceModal && (
+            <Modal isOpen={showInvoiceModal} onClose={() => setShowInvoiceModal(false)} title={editingInvoice ? 'Edit Invoice' : 'Add Invoice'}>
+              <BillingForm
+                initialData={editingInvoice}
+                onSubmit={async (data) => {
+                  if (editingInvoice) {
+                    await billService.updateBill(editingInvoice._id || editingInvoice.id, data);
+                  } else {
+                    await billService.createBill(data);
+                  }
+                  setShowInvoiceModal(false);
+                  fetchInvoices();
+                }}
+                onCancel={() => setShowInvoiceModal(false)}
+              />
+            </Modal>
+          )}
+          {showInvoiceDetail && viewingInvoice && (
+            <Modal isOpen={showInvoiceDetail} onClose={() => setShowInvoiceDetail(false)} title="Invoice Details">
+              <DentalBillDetails 
+                bill={viewingInvoice} 
+                onClose={() => setShowInvoiceDetail(false)} 
+                payMode={!!(viewingInvoice && viewingInvoice.balanceAmount > 0)}
+                onPaymentSuccess={() => {
+                  setShowInvoiceDetail(false);
+                  fetchInvoices();
+                }}
+              />
+            </Modal>
+          )}
+          {deletingInvoice && (
+            <Modal isOpen={!!deletingInvoice} onClose={() => setDeletingInvoice(null)} title="Delete Invoice">
+              <Alert variant="error" title="Are you sure you want to delete this invoice?" message={deleteError || ''} />
+              <div className="flex justify-end space-x-3 mt-4">
+                <Button variant="secondary" onClick={() => setDeletingInvoice(null)}>Cancel</Button>
+                <Button variant="danger" onClick={handleConfirmDeleteInvoice}>Delete</Button>
+              </div>
+            </Modal>
+          )}
         </div>
       )}
       {activeTab === TAB_PAYMENTS && (
@@ -872,7 +1048,7 @@ const BillingDashboard = () => {
               <Button variant="secondary" size="sm" className="flex items-center text-sm" onClick={() => handleExport('excel', payments, 'Payments')}><FaFileExcel className="mr-1" /> Excel</Button>
               <Button variant="secondary" size="sm" className="flex items-center text-sm" onClick={() => handleExport('csv', payments, 'Payments')}><FaFileCsv className="mr-1" /> CSV</Button>
               <Button variant="secondary" size="sm" className="flex items-center text-sm"><FaPrint className="mr-1" /> Print</Button>
-              <Button variant="primary" size="sm" className="flex items-center text-sm ml-2"><FaFileInvoiceDollar className="mr-1" /> Add Payment</Button>
+              <Button variant="primary" size="sm" className="flex items-center text-sm ml-2" onClick={() => handleAddPayment(null)}><FaFileInvoiceDollar className="mr-1" /> Add Payment</Button>
             </div>
           </div>
           {/* Advanced Filters (collapsible) */}
@@ -927,7 +1103,8 @@ const BillingDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Payment ID <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Date <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Patient <FaSort className="inline ml-1 text-gray-300" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Amount <FaSort className="inline ml-1 text-gray-300" /></th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -937,27 +1114,50 @@ const BillingDashboard = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {tableLoading ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-4 whitespace-nowrap text-center">Loading...</td>
+                      <td colSpan="10" className="px-6 py-4 whitespace-nowrap text-center">Loading...</td>
                     </tr>
                   ) : payments.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-4 whitespace-nowrap text-center">No payments found.</td>
+                      <td colSpan="10" className="px-6 py-4 whitespace-nowrap text-center">No payments found.</td>
                     </tr>
                   ) : (
                     payments.map(pay => (
                       <tr key={pay._id || pay.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap"><input type="checkbox" /></td>
-                        <td className="px-6 py-4 whitespace-nowrap">{pay.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{format(new Date(pay.date), 'dd MMM yyyy')}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{pay.patient}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{formatINRCurrency(pay.amount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{pay.mode}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{pay.invoice}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{pay.status}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pay._id || pay.id || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{
+                          pay.billDate && !isNaN(new Date(pay.billDate))
+                            ? format(new Date(pay.billDate), 'dd MMM yyyy')
+                            : '-'
+                        }</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pay.patient || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pay.doctor || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaRupeeSign className="mr-1 text-green-500" />
+                            {(pay.amount || 0).toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pay.paymentMethod || pay.method || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pay.billNumber || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pay.status || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-3">
-                            <button className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center" title="View"><FaEye size={16} /><span className="ml-1 hidden sm:inline">View</span></button>
-                            <button className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center" title="Download"><FaFilePdf size={16} /><span className="ml-1 hidden sm:inline">Download</span></button>
+                          <div className="flex justify-end space-x-2">
+                            <Tooltip content="View">
+                              <Button variant="primary" size="xs" className="p-2">
+                                <FaEye size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Download PDF">
+                              <Button variant="success" size="xs" className="p-2">
+                                <FaFilePdf size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Refund">
+                              <Button variant="danger" size="xs" className="p-2">
+                                <FaFileInvoiceDollar size={16} />
+                              </Button>
+                            </Tooltip>
                           </div>
                         </td>
                       </tr>
@@ -1002,6 +1202,33 @@ const BillingDashboard = () => {
               </Button>
             </div>
           </div>
+          {/* Payment CRUD Modals */}
+          {showPaymentModal && (
+            <Modal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} title={editingPayment ? 'Edit Payment' : 'Add Payment'}>
+              <PaymentForm
+                bill={selectedBillForPayment}
+                onSubmit={() => {
+                  setShowPaymentModal(false);
+                  fetchPayments();
+                }}
+                onCancel={() => setShowPaymentModal(false)}
+              />
+            </Modal>
+          )}
+          {showPaymentDetail && viewingPayment && (
+            <Modal isOpen={showPaymentDetail} onClose={() => setShowPaymentDetail(false)} title="Payment Details">
+              <PaymentDetail payment={viewingPayment} onEdit={handleEditPayment} onBack={() => setShowPaymentDetail(false)} />
+            </Modal>
+          )}
+          {deletingPayment && (
+            <Modal isOpen={!!deletingPayment} onClose={() => setDeletingPayment(null)} title="Delete Payment">
+              <Alert variant="error" title="Are you sure you want to delete this payment?" message={deletePaymentError || ''} />
+              <div className="flex justify-end space-x-3 mt-4">
+                <Button variant="secondary" onClick={() => setDeletingPayment(null)}>Cancel</Button>
+                <Button variant="danger" onClick={handleConfirmDeletePayment}>Delete</Button>
+              </div>
+            </Modal>
+          )}
         </div>
       )}
       {activeTab === TAB_REFUNDS && (
@@ -1080,10 +1307,10 @@ const BillingDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Refund ID <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Date <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Patient <FaSort className="inline ml-1 text-gray-300" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Amount <FaSort className="inline ml-1 text-gray-300" /></th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -1098,21 +1325,56 @@ const BillingDashboard = () => {
                       <td colSpan="10" className="px-6 py-4 whitespace-nowrap text-center">No refunds found.</td>
                     </tr>
                   ) : (
-                    refunds.map(refund => (
-                      <tr key={refund._id || refund.id} className="hover:bg-gray-50">
+                    refunds.map(ref => (
+                      <tr key={ref._id || ref.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap"><input type="checkbox" /></td>
-                        <td className="px-6 py-4 whitespace-nowrap">{refund.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{format(new Date(refund.date), 'dd MMM yyyy')}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{refund.patient}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{formatINRCurrency(refund.amount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{refund.mode}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{refund.invoice}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{refund.paymentId}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{refund.status}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaFileInvoiceDollar className="h-5 w-5 text-green-600 mr-2" />
+                            {ref.id || ref.refundId}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{format(new Date(ref.date), 'dd MMM yyyy')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ref.patientId?.name || ref.patient || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaUserMd className="h-5 w-5 text-indigo-500 mr-2" />
+                            <Tooltip content={`Doctor ID: ${ref.doctorId?._id || ref.doctorId || 'Unknown'}`}>
+                              <span>{ref.doctorId?.userId?.name || ref.doctorId?.name || (typeof ref.doctorId === 'string' && ref.doctorId !== '[object Object]' ? ref.doctorId : 'N/A')}</span>
+                            </Tooltip>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaRupeeSign className="mr-1 text-green-500" />
+                            {(ref.amount || 0).toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ref.mode || ref.paymentMode || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaFileInvoiceDollar className="h-5 w-5 text-green-600 mr-2" />
+                            {ref.invoiceNumber || ref.invoice || '-'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ref.status || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-3">
-                            <button className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center" title="View"><FaEye size={16} /><span className="ml-1 hidden sm:inline">View</span></button>
-                            <button className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center" title="Download"><FaFilePdf size={16} /><span className="ml-1 hidden sm:inline">Download</span></button>
+                          <div className="flex justify-end space-x-2">
+                            <Tooltip content="View">
+                              <Button variant="primary" size="xs" className="p-2">
+                                <FaEye size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Download PDF">
+                              <Button variant="success" size="xs" className="p-2">
+                                <FaFilePdf size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Refund">
+                              <Button variant="danger" size="xs" className="p-2">
+                                <FaFileInvoiceDollar size={16} />
+                              </Button>
+                            </Tooltip>
                           </div>
                         </td>
                       </tr>
@@ -1169,7 +1431,7 @@ const BillingDashboard = () => {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <FaSearch className="text-gray-400" />
                   </div>
-                  <input type="text" placeholder="Search GST records..." className="pl-10 pr-4 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full md:w-64" />
+                  <input type="text" placeholder="Search GST reports..." className="pl-10 pr-4 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full md:w-64" />
                 </div>
                 <button type="button" onClick={() => setShowGSTFilters(v => !v)} className="px-4 py-2 bg-white border border-l-0 border-gray-300 rounded-r-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                   <FaFilter />
@@ -1200,6 +1462,16 @@ const BillingDashboard = () => {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All Payment Modes</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
                   <div className="flex items-center gap-2">
                     <input type="date" className="border rounded px-2 py-1" />
@@ -1223,10 +1495,12 @@ const BillingDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><input type="checkbox" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">GST ID <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Date <FaSort className="inline ml-1 text-gray-300" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Invoice # <FaSort className="inline ml-1 text-gray-300" /></th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Patient <FaSort className="inline ml-1 text-gray-300" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Amount <FaSort className="inline ml-1 text-gray-300" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">GST Amount <FaSort className="inline ml-1 text-gray-300" /></th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GST</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -1234,27 +1508,64 @@ const BillingDashboard = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {tableLoading ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-4 whitespace-nowrap text-center">Loading...</td>
+                      <td colSpan="11" className="px-6 py-4 whitespace-nowrap text-center">Loading...</td>
                     </tr>
                   ) : gstRecords.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-4 whitespace-nowrap text-center">No GST records found.</td>
+                      <td colSpan="11" className="px-6 py-4 whitespace-nowrap text-center">No GST records found.</td>
                     </tr>
                   ) : (
                     gstRecords.map(gst => (
-                      <tr key={gst._id || gst.id} className="hover:bg-gray-50">
+                      <tr key={gst.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap"><input type="checkbox" /></td>
-                        <td className="px-6 py-4 whitespace-nowrap">{gst.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{format(new Date(gst.date), 'dd MMM yyyy')}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{gst.invoice}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{gst.patient}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{formatINRCurrency(gst.amount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{formatINRCurrency(gst.gstAmount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{gst.status}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaFileInvoiceDollar className="h-5 w-5 text-green-600 mr-2" />
+                            {gst.id}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{format(new Date(gst.date), 'dd MMM yyyy')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{gst.patientId?.name || gst.patient || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaUserMd className="h-5 w-5 text-indigo-500 mr-2" />
+                            <Tooltip content={`Doctor ID: ${gst.doctorId?._id || gst.doctorId || 'Unknown'}`}>
+                              <span>{gst.doctorId?.userId?.name || gst.doctorId?.name || (typeof gst.doctorId === 'string' && gst.doctorId !== '[object Object]' ? gst.doctorId : 'N/A')}</span>
+                            </Tooltip>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaRupeeSign className="mr-1 text-green-500" />
+                            {(gst.amount || 0).toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaRupeeSign className="mr-1 text-blue-500" />
+                            {(gst.gstAmount || 0).toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{gst.mode || gst.paymentMode || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <FaFileInvoiceDollar className="h-5 w-5 text-green-600 mr-2" />
+                            {gst.invoiceNumber || gst.invoice || '-'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{gst.status || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-3">
-                            <button className="text-blue-600 hover:text-blue-900 transition-colors duration-200 flex items-center" title="View"><FaEye size={16} /><span className="ml-1 hidden sm:inline">View</span></button>
-                            <button className="text-indigo-600 hover:text-indigo-900 transition-colors duration-200 flex items-center" title="Download"><FaFilePdf size={16} /><span className="ml-1 hidden sm:inline">Download</span></button>
+                          <div className="flex justify-end space-x-2">
+                            <Tooltip content="View">
+                              <Button variant="primary" size="xs" className="p-2">
+                                <FaEye size={16} />
+                              </Button>
+                            </Tooltip>
+                            <Tooltip content="Download PDF">
+                              <Button variant="success" size="xs" className="p-2">
+                                <FaFilePdf size={16} />
+                              </Button>
+                            </Tooltip>
                           </div>
                         </td>
                       </tr>
@@ -1323,7 +1634,7 @@ const BillingDashboard = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis />
-                    <Tooltip formatter={formatINRCurrency} />
+                    <RechartsTooltip formatter={formatINRCurrency} />
                     <Legend />
                     <Line type="monotone" dataKey="billed" stroke="#8884d8" name="Billed Amount" />
                     <Line type="monotone" dataKey="paid" stroke="#82ca9d" name="Collected Amount" />
@@ -1343,7 +1654,7 @@ const BillingDashboard = () => {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={formatINRCurrency} />
+                    <RechartsTooltip formatter={formatINRCurrency} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -1393,5 +1704,17 @@ function handleExport(type) {
     doc.save('billing_report.pdf');
   }
 }
+
+// Placeholder for PaymentDetail (implement as needed)
+const PaymentDetail = ({ payment, onEdit, onBack }) => (
+  <div className="p-4">
+    <h2 className="text-lg font-bold mb-2">Payment Details</h2>
+    <pre className="bg-gray-100 p-2 rounded text-xs">{JSON.stringify(payment, null, 2)}</pre>
+    <div className="flex justify-end space-x-2 mt-4">
+      <Button variant="secondary" onClick={onBack}>Close</Button>
+      {onEdit && <Button variant="primary" onClick={() => onEdit(payment)}>Edit</Button>}
+    </div>
+  </div>
+);
 
 export default BillingDashboard;

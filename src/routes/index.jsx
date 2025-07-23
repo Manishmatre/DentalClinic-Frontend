@@ -44,9 +44,15 @@ const renderRoute = (route) => {
   );
 };
 
+import ProfileSettings from '../pages/patient/ProfileSettings';
+
 const AppRoutes = () => {
   const routes = [
     adminRoutes,
+    {
+      path: '/patient/profile-settings',
+      element: <ProfileSettings />
+    },
     // Add other route groups here
   ];
 
